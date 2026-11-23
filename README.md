@@ -1,68 +1,89 @@
-# PULSE · Moniteur système Windows
+# PULSE
 
-Préversion Windows 11 x64, écrite en Rust avec [Rune](https://github.com/anomalyco/rune). **PULSE.exe démarre sur le tableau Processus avec les mesures réelles, sans console.** La recherche en haut filtre immédiatement le tableau ; depuis un autre écran, validez avec **Entrée**.
+**A native task manager and system monitor for Windows 11 x64.** Built in Rust with [Rune](https://github.com/anomalyco/rune).
 
-![Gestionnaire de tâches PULSE, données simulées](assets/captures/pulse-processes.png)
+PULSE opens directly to the live process table, without a console. Sort or filter processes, select one to inspect its CPU, memory, I/O and GPU activity, or switch to the system monitor for a quick look at the whole PC.
 
-## Lancer
+![PULSE process table and live inspector](assets/captures/pulse-processes.png)
 
-Installer Git, [rustup](https://rustup.rs/) et les outils de compilation **Desktop development with C++** de Visual Studio avec un SDK Windows. Le projet épingle Rust 1.99.1 et les dépendances Cargo. Rune utilise un adaptateur graphique Windows compatible wgpu/D3D12 ; en cas d’échec, consulter le message de démarrage.
+> The screenshots use simulated data. The portable executable starts with real measurements. The app UI is currently in French.
+
+## Screenshots
+
+### System monitor
+
+CPU and GPU load, RAM and VRAM usage, disk and network throughput, and uptime on one screen.
+
+![System monitor with CPU, RAM, GPU, VRAM, disk and network panels](assets/captures/pulse-monitor.png)
+
+### Storage
+
+Select a physical drive to see its activity, read/write rates, latency, volume space, and available health data.
+
+![Storage view with three physical drives, a throughput graph, volumes and drive health](assets/captures/pulse-io.png)
+
+### GPU and game performance
+
+| GPU inspector | PresentMon capture |
+| --- | --- |
+| [![GPU inspector with adapter metrics and charts](assets/captures/pulse-gpu.png)](assets/captures/pulse-gpu.png) | [![Game capture setup with automatic PresentMon capture](assets/captures/pulse-gaming.png)](assets/captures/pulse-gaming.png) |
+
+![PresentMon report with average FPS, 1% low, P99 and a frametime chart](assets/captures/pulse-gaming-report.png)
+
+### Sessions and diagnostics
+
+| System timeline and local sessions | Process memory tracking |
+| --- | --- |
+| [![Session timeline with recording controls and CPU, RAM and GPU history](assets/captures/pulse-history.png)](assets/captures/pulse-history.png) | [![Memory tracking view with process memory history and a diagnostic result](assets/captures/pulse-memory.png)](assets/captures/pulse-memory.png) |
+
+### Network connections
+
+![Local TCP and UDP endpoints with protocol, address and PID filters](assets/captures/pulse-connections.png)
+
+[System diagnostics](assets/captures/pulse-diagnostics.png) · [Resource charts](assets/captures/pulse-overview.png) · [Compact process table at 150% scale](assets/captures/pulse-processes-compact-150.png)
+
+## Run PULSE
+
+**If you have the portable ZIP**, extract it and run `PULSE.exe`. You do not need Rust or a separate PresentMon installation. With multiple monitors, PULSE requests an inactive window on a non-primary display.
+
+**To build from source**, install Git, [rustup](https://rustup.rs/), and the Visual Studio **Desktop development with C++** build tools with a Windows SDK. The project pins Rust and its dependencies. The interface requires a graphics adapter supported by Rune's wgpu/D3D12 backend.
 
 ```powershell
-cargo run --locked                       # mesures de ce PC; sans élévation
-cargo run --locked -- --record .\incident.sqlite --retain 3600
-cargo run --locked -- --replay .\incident.sqlite
-cargo build --locked --release -p pulse-app
+cargo run --locked                        # Live monitoring, without elevation
+.\scripts\package-windows.ps1 -NoSmoke     # Package the portable Windows x64 ZIP
 ```
 
-Avec le paquet portable, double-cliquer sur l’exécutable. L’enregistrement est optionnel : choisir un **nouveau fichier** situé dans un répertoire personnel et passer `--record`. La fermeture arrête la session. `--retain` limite le nombre de points conservés (1 à 86 400). La relecture ouvre en lecture seule les 900 derniers points. La pause fige l’affichage ; l’enregistrement explicitement demandé continue.
+The packaging script verifies and embeds the official [PresentMon 2.3.1 x64 CLI](https://github.com/GameTechDev/PresentMon/releases/tag/v2.3.1). It writes `artifacts/PULSE-windows-x64.zip`. A normal `cargo run` development build does not bundle the CLI; you can select it manually in **Jeux**.
 
-**GPU** mesure les adaptateurs NVIDIA avec NVML si le pilote le permet : activité, VRAM, température, fréquence, puissance, consigne du ventilateur et moteurs vidéo. L’activité du premier adaptateur est utilisée dans la vue d’ensemble ; elle ne représente pas la somme des GPU. Il n’y a ni démonstration ni simulation dans l’exécutable distribué. Les captures de développement utilisent des fixtures identifiées.
+## What you can do
 
-**GPU → Par processus** trie les mesures Windows WDDM par activité ou par VRAM dédiée. Le tableau **Processus** affiche le maximum mesuré par moteur ; l’inspecteur donne le détail par adaptateur. Une valeur absente n’est pas un zéro. Ces mesures sont indépendantes de NVIDIA NVML et ne sont pas enregistrées dans les sessions.
+- **Processes:** Search by name or PID, sort columns, switch to a verified parent/child tree, and inspect up to a minute of CPU, private memory and GPU readings after selecting a process. Termination and priority changes require confirmation. PULSE does not offer high or real-time priority and does not elevate itself.
+- **Hardware:** See logical CPU activity and Windows-reported frequencies. NVIDIA NVML provides adapter readings where supported; Windows WDDM provides per-process GPU engine activity and video memory independently of NVML. GPU activity is the busiest measured engine, not the sum of all engines. For CPU temperature, enable **Shared Memory Support** and keep sensors active in HWiNFO; PULSE reads the shared sensor data, not NZXT CAM.
+- **Storage and network:** Inspect physical drives, volume space, per-drive throughput and latency, and supported SMART/NVMe readings. Inspect local TCP/UDP endpoints on demand, without DNS lookups or storing addresses. Unsupported or unreported readings are shown as unavailable, not zero.
+- **Gaming:** In **Jeux**, choose 15, 30 or 60 seconds and click **Capturer en auto**, then return to the game within 45 seconds. Capture targets the eligible foreground process; time spent out of focus is excluded without extending the capture. Reports include displayed FPS when PresentMon can measure it, a 1% low, P99 and a frametime chart. Presentation or application cadence is labeled separately. Live capture depends on Windows ETW permissions; importing a PresentMon CSV is an alternative. Reports remain in memory.
+- **Sessions:** Record or reopen SQLite sessions, inspect historical spikes and their top CPU/memory contributors, and export aggregate CSV. Recording contributors is optional; names and PIDs are not included in CSV. Memory growth is a reason to investigate, not proof of a leak. The sustained CPU diagnostic does not assign a cause to a process.
 
-**Moniteur** rassemble CPU, RAM utilisée et totale, GPU et VRAM, débits et latences disque, réception et émission réseau, temps depuis le démarrage de Windows et durée d’observation. Il s’ouvre aussi depuis **Processus → Moniteur**. Température, fréquence, puissance, ventilateur et VRAM de la carte sont affichés quand NVIDIA NVML les fournit. Pour la température CPU, ouvrez les capteurs dans HWiNFO et activez **Shared Memory Support** dans ses réglages ; PULSE lit la sonde récente dans **Moniteur** et **Détail CPU**, sans installer ni lancer de pilote. Cela ne lit pas NZXT CAM. Les sessions SQLite restent limitées aux mesures agrégées existantes.
+## Sessions from the command line
 
-### FPS et frametimes (PresentMon)
+```powershell
+.\PULSE.exe --record .\incident.sqlite --retain 3600
+.\PULSE.exe --record .\incident-with-processes.sqlite --with-processes
+.\PULSE.exe --replay .\incident.sqlite
+.\PULSE.exe --replay .\incident.sqlite --export-csv .\incident.csv
+```
 
-1. Le paquet Windows intègre le [CLI officiel PresentMon 2.3.1 x64](https://github.com/GameTechDev/PresentMon/releases/tag/v2.3.1). Il est préparé dans un dossier temporaire à la demande : pas d’installation de service, de téléchargement au lancement ni de configuration manuelle. Un build `cargo run` standard n’intègre pas le CLI ; un chemin peut y être choisi manuellement.
-2. Dans **Jeux**, sélectionnez 15, 30 ou 60 secondes et cliquez sur **Capturer en auto**. Revenez directement dans le jeu dans les 45 secondes. PULSE choisit la première application admissible qui reste au premier plan ; ce n’est pas une reconnaissance du titre du jeu. Les périodes où le processus ciblé n’est plus au premier plan sont exclues, sans prolonger la capture. Pour forcer une cible, passez par **Processus → Mesurer les FPS… → Capturer la cible**.
-3. Une capture en direct nécessite les droits ETW de Windows. Si l’accès est refusé, vérifiez les droits du compte (notamment le groupe **Utilisateurs des journaux de performances**) ou utilisez **Jeux → Autres options → Importer un CSV…**. PULSE ne s’élève pas.
+Recording only creates new files. `--retain` accepts 1 to 86,400 samples. Replay opens read-only and shows up to the latest 900 samples; CSV export to a new file includes the full retained session. Pausing the display does not stop an explicitly started recording. Detailed GPU readings, storage inventories and game reports are not saved in SQLite.
 
-PULSE affiche les FPS à l’écran lorsque PresentMon fournit `DisplayedTime` ; les cadences de présentation ou d’application sont signalées séparément en l’absence de mesure d’affichage. Le rapport reste en mémoire, hors des sessions SQLite ; les fichiers temporaires de capture sont supprimés à la fin du traitement.
-
-Dans **Processus**, cliquez sur un en-tête pour trier et sélectionnez une ligne pour ouvrir l’inspecteur. Les courbes CPU, mémoire privée et GPU couvrent jusqu’à la dernière minute depuis la sélection de cette instance ; aucun historique n’est reconstruit. **RAM → Ouvrir le suivi mémoire → Suivre la sélection** démarre le suivi long. Un signal « Fuite potentielle » n’est pas une confirmation.
-
-**Stockage et réseau** affiche les débits agrégés en direct et à la relecture des nouvelles sessions SQLite. Les anciennes sessions restent lisibles, mais ne contiennent pas ces débits. Le périmètre réseau est limité aux interfaces matérielles Ethernet et Wi-Fi actives.
-**Performances → Détail CPU** affiche la charge par processeur logique et la fréquence remontée par Windows lorsqu’elle est disponible. **Processus** utilise les icônes des exécutables locaux, avec une initiale de remplacement si Windows ne fournit pas la ressource.
-
-- **Processus → Arborescence** : déplier ou replier les branches. Un parent doit avoir été créé avant l’enfant. En recherche ou avec un filtre, seuls les résultats correspondants sont affichés.
-- **Sessions → Copier le CSV** : copie la période visible, sans nom de machine, nom de processus, chemin ni adresse réseau. Pour exporter toute la rétention d’une session vers un nouveau fichier : `.\PULSE.exe --replay .\incident.sqlite --export-csv .\incident.csv`.
-- **Sessions → Sessions locales** : **Enregistrer…** crée une session (3 600 points conservés depuis l’interface), **Arrêter** clôt le fichier et **Ouvrir une session…** passe en lecture seule. **Revenir au direct** reprend la collecte. Le sélecteur Windows n’écrit rien tant que le chemin n’a pas été confirmé ; un fichier déjà présent n’est jamais écrasé.
-- **Sessions → Processus à cet instant** : cliquer ou glisser sur la courbe pour afficher les six premiers processus en CPU ou mémoire privée à cet instant. Le direct garde ce détail en RAM. Pour le conserver en relecture, activer **Inclure les processus** avant l’enregistrement ; les noms et PID restent dans le fichier local et n’apparaissent jamais dans le CSV. En CLI : `--record session.sqlite --with-processes`.
-- **Stockage → Latence** : moyennes agrégées de lecture et d’écriture des disques physiques. En l’absence d’opérations sur l’intervalle, la latence reste indisponible.
-- **Moniteur → Disque et réseau → Stockage** : inventaire des disques Windows, volumes avec lettres et espace libre, activité, lecture/écriture et latence par disque. Cliquez sur un disque pour afficher jusqu’à 60 secondes de débit. Santé, température, endurance, heures et total écrit apparaissent uniquement quand le matériel et Windows les fournissent (les données détaillées ne sont pas enregistrées en session).
-- **Stockage et réseau → Connexions** : inventaire TCP et ports UDP, en IPv4 et IPv6. Filtrer par protocole, PID ou port. La liste n’est collectée que pendant l’inspection locale, sans résolution DNS ni enregistrement des adresses.
-- **Processus → E/S** : débits de lecture et d’écriture calculés à partir des compteurs cumulés Windows, pour la même instance de processus. Les opérations sur fichiers, réseau et périphériques sont agrégées.
-- **Processus → Modifier la priorité…** : choisir Très basse, Basse, Normale ou Au-dessus de la normale, puis confirmer. PULSE ne propose ni Haute ni Temps réel et n’élève pas ses droits.
-- **Sessions → Afficher le diagnostic CPU** : la règle `CPU-01` signale une charge d’au moins 90 % pendant 15 s sur des mesures contiguës. Elle s’évalue en direct ou au point sélectionné de l’historique, sans attribuer automatiquement la cause.
-- Avec plusieurs écrans, PULSE demande une ouverture inactive sur un écran non principal ; avec un seul écran, le lancement est normal.
-
-## Vérifier et contribuer
+## Development
 
 ```powershell
 cargo fmt --all -- --check
 cargo clippy --locked --workspace --all-targets -- -D warnings
 cargo test --locked --workspace
 cargo build --locked -p pulse-app
-.\scripts\capture.ps1
+.\scripts\capture.ps1                      # Regenerate the screenshots off-screen
 ```
 
-- [Architecture et arbitrages](docs/ADR-0001-architecture.md)
-- [Design system implémenté](docs/DESIGN-SYSTEM.md)
-- [Dépendances et audit Rune](docs/DEPENDENCIES.md)
-- [Périmètre livré, limites et backlog](docs/IMPLEMENTATION-PLAN.md)
-- [Résultats de validation Windows et première mesure d’empreinte](docs/VALIDATION.md)
-- [Spécification d’origine consolidée](PULSE-ADR-DESIGN-SYSTEM-complet.md)
+[Architecture](docs/ADR-0001-architecture.md) · [Design system](docs/DESIGN-SYSTEM.md) · [Dependencies](docs/DEPENDENCIES.md) · [Roadmap](docs/IMPLEMENTATION-PLAN.md) · [Windows validation](docs/VALIDATION.md)
 
-Licence [MIT](LICENSE). Les fonctions de PULSE ne requièrent ni compte ni connexion réseau ; la compilation récupère les dépendances publiées.
+PULSE is [MIT licensed](LICENSE). The bundled CLI has its own [PresentMon license](third-party/PresentMon-LICENSE.txt). Monitoring is local and requires no account or network connection.

@@ -402,6 +402,93 @@ fn capture(args: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
             s.gaming.commands = Some(std::sync::mpsc::sync_channel(1).0);
             s.gaming.bundled_presentmon = true;
         }),
+        ("gaming-report", |s| {
+            s.navigate(Page::Gaming);
+            s.gaming.commands = Some(std::sync::mpsc::sync_channel(1).0);
+            s.gaming.bundled_presentmon = true;
+            let mut elapsed = 0.;
+            let frames: Vec<_> = (0..3600)
+                .map(|i| {
+                    7.4 + 1.7 * (f64::from(i) * 0.143).sin().powi(2)
+                        + if i % 193 == 0 { 24. } else { 0. }
+                        + if (i / 120) % 5 == 2 { 3. } else { 0. }
+                })
+                .collect();
+            let total: f64 = frames.iter().sum();
+            let chart = frames
+                .chunks(8)
+                .map(|chunk| {
+                    let mut peak = [elapsed, 0.];
+                    for &ms in chunk {
+                        elapsed += ms;
+                        if ms > peak[1] {
+                            peak = [elapsed, ms];
+                        }
+                    }
+                    peak
+                })
+                .collect();
+            let intervals = frames.len();
+            let mut sorted = frames;
+            sorted.sort_unstable_by(f64::total_cmp);
+            let slow = intervals.div_ceil(100);
+            s.gaming.report = Some(std::sync::Arc::new(pulse_gaming::Report {
+                name: "Studio Render.exe".into(),
+                pid: 4200,
+                swapchain: 1,
+                streams: 1,
+                metric: pulse_gaming::Metric::Displayed,
+                intervals,
+                total_ms: total,
+                fps: 1000. * intervals as f64 / total,
+                p99_ms: sorted[(intervals * 99).div_ceil(100) - 1],
+                low_one: Some(1000. * slow as f64 / sorted[intervals - slow..].iter().sum::<f64>()),
+                foreground_only: true,
+                chart,
+            }));
+        }),
+        ("connections", |s| {
+            use pulse_domain::{Availability, Endpoint, EndpointSnapshot, Transport};
+            s.navigate(Page::Io);
+            s.tab = 2;
+            let mut snap = pulse_testkit::snapshot(120);
+            snap.endpoints = Some(std::sync::Arc::new(EndpointSnapshot {
+                utc_ms: snap.utc_ms,
+                entries: [
+                    (
+                        Transport::Tcp,
+                        "192.0.2.12:51902",
+                        Some("203.0.113.7:443"),
+                        4264,
+                    ),
+                    (Transport::Tcp, "127.0.0.1:8080", None, 4200),
+                    (Transport::Tcp, "[::1]:4201", None, 4384),
+                    (Transport::Udp, "192.0.2.12:5353", None, 5300),
+                    (Transport::Udp, "[::1]:5355", None, 4700),
+                ]
+                .into_iter()
+                .map(|(transport, local, remote, pid)| Endpoint {
+                    transport,
+                    local: local.parse().expect("fixture address"),
+                    remote: remote.map(|ip| ip.parse().expect("fixture address")),
+                    tcp_state: (transport == Transport::Tcp).then_some(if remote.is_some() {
+                        5
+                    } else {
+                        2
+                    }),
+                    pid,
+                })
+                .collect(),
+                tables: [
+                    Availability::Available(2),
+                    Availability::Available(1),
+                    Availability::Available(1),
+                    Availability::Available(1),
+                ],
+                omitted: 0,
+            }));
+            s.publish(std::sync::Arc::new(snap));
+        }),
     ];
     App::new(spec).args(args).try_run()?;
     Ok(())

@@ -14,7 +14,7 @@ function Capture($Scene, $File, $Size, $Scale) {
     }
 }
 
-foreach ($scene in @('overview', 'processes', 'monitor', 'gpu', 'memory', 'diagnostics', 'io', 'history', 'gaming')) {
+foreach ($scene in @('overview', 'processes', 'monitor', 'gpu', 'memory', 'diagnostics', 'io', 'history', 'gaming', 'gaming-report', 'connections')) {
     Capture $scene "pulse-$scene.png" '1440x900' '1'
 }
 Capture 'overview' 'pulse-overview-125.png' '1440x900' '1.25'

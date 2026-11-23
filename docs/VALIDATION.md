@@ -9,7 +9,7 @@ Machine : Windows 11 Pro 10.0.26200, Ryzen 9 3900X (24 processeurs logiques), Ru
 | `cargo test --locked --workspace` | 54 tests, dont 18 scénarios d’interaction et de projection Rune |
 | `cargo build --locked --release -p pulse-app` | Réussi |
 | `scripts/smoke-windows.ps1` | Fenêtre release ouverte en mode réel, fermeture normale, 4 points réels après purge, relecture ouverte puis fermée |
-| `scripts/capture.ps1` | 11 PNG générés hors écran, dont une fenêtre compacte et une vue à 150 % |
+| `scripts/capture.ps1` | 14 PNG générés hors écran, dont le rapport FPS, les connexions et les variantes compactes ou à 150 % |
 
 Le test d’intégration a obtenu des mesures natives pour les deux nouveaux collecteurs sur ce poste : environ **30,8 Mo/s** sur le compteur disque agrégé pendant le test et **0 o/s** sur les interfaces admissibles au cours de l’intervalle réseau observé. Ce n’est pas une mesure de capacité ni une validation comparative sous charge. Les tests vérifient aussi que la disparition d’une interface, une remise à zéro du compteur ou un intervalle trop long ne produisent pas de faux débit.
 
