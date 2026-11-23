@@ -12,6 +12,13 @@ mod process_icons;
 mod wddm;
 pub use display::secondary_window;
 
+pub fn ui_language_is_french() -> bool {
+    // SAFETY: no arguments, no memory access through pointers; returns the user's UI LANGID.
+    let lang = unsafe { windows::Win32::Globalization::GetUserDefaultUILanguage() };
+    // PRIMARYLANGID: lower 10 bits. LANG_FRENCH = 0x0c, including all regional variants.
+    lang & 0x03ff == 0x0c
+}
+
 pub fn show_startup_error(message: &str) {
     use windows::{
         Win32::UI::WindowsAndMessaging::{MB_ICONERROR, MB_OK, MessageBoxW},

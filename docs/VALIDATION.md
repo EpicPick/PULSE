@@ -6,7 +6,7 @@ Machine : Windows 11 Pro 10.0.26200, Ryzen 9 3900X (24 processeurs logiques), Ru
 |---|---|
 | `cargo fmt --all -- --check` | Réussi |
 | `cargo clippy --locked --workspace --all-targets -- -D warnings` | Réussi |
-| `cargo test --locked --workspace` | 54 tests, dont 18 scénarios d’interaction et de projection Rune |
+| `cargo test --locked --workspace` | 58 tests, dont 20 scénarios d’interaction et de projection Rune |
 | `cargo build --locked --release -p pulse-app` | Réussi |
 | `scripts/smoke-windows.ps1` | Fenêtre release ouverte en mode réel, fermeture normale, 4 points réels après purge, relecture ouverte puis fermée |
 | `scripts/capture.ps1` | 14 PNG générés hors écran, dont le rapport FPS, les connexions et les variantes compactes ou à 150 % |
@@ -40,6 +40,8 @@ Moniteur : un test Rune vérifie les six blocs, les capacités RAM/VRAM et le ch
 Détail CPU : les tests vérifient l’absence de résumé GPU et l’affichage de la température CPU fournie par un capteur de fixture. Le lecteur HWiNFO SM2 est testé sur des données synthétiques (CPU, groupe GPU exclu, données périmées et bornes incorrectes) ; la sonde physique reste à valider avec HWiNFO en cours d’exécution.
 
 Stockage : les trois disques de ce poste et leurs volumes associés ont été détectés hors écran. PDH a répondu pour chacun. Les deux NVMe ont exposé leur journal de santé, température et total écrit ; le SATA n’a pas publié de température via les interfaces utilisées. Le scénario Rune vérifie la sélection d’un autre disque et l’état non exposé ; le tampon par disque est testé lors d’un remplacement d’identité.
+
+Langue : les tests hors écran vérifient le passage français → anglais → système sans perdre le disque sélectionné, la traduction d’une confirmation de terminaison sans modifier le nom du processus, et la relecture de la préférence dans un dossier temporaire.
 
 **Empreinte de la préversion avant les collecteurs I/O.** En mode release, vue d’ensemble et enregistrement SQLite en cours, après 3 s de stabilisation : **12,86 % d’un cœur logique** sur une fenêtre de 8 s, **211,5 Mio** privés, **126,4 Mio** résidents. Ce résultat est une mesure ponctuelle, pas un benchmark de 30 min ; il ne valide ni la cible de 2 % d’un cœur ni celle de 200 Mio privés. Le premier rendu du tableau dans l’outil headless **debug** était d’environ 482 ms, GPU initialisé séparément ; cette mesure à froid ne représente pas la latence d’interaction ou la cadence à l’écran.
 

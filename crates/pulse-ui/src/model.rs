@@ -4,6 +4,7 @@ use std::{
     sync::Arc,
 };
 
+use crate::{Language, LanguagePreference};
 use pulse_domain::{Availability, Process, ProcessKey, Sample, Snapshot, Unit};
 use pulse_history::{ContributorPoint, Point, Replay, SessionCommand, SessionReply, ring_push};
 use rune::TextEdit;
@@ -24,6 +25,11 @@ pub enum Page {
 }
 
 pub struct State {
+    pub language_preference: LanguagePreference,
+    pub system_language: Language,
+    pub(crate) language_picker: bool,
+    pub save_language: Option<fn(LanguagePreference) -> bool>,
+    pub(crate) language_save_failed: bool,
     pub page: Page,
     pub period: usize,
     pub tab: usize,
@@ -135,6 +141,14 @@ pub struct TreeRow {
 }
 
 impl State {
+    pub fn language(&self) -> Language {
+        self.language_preference.resolve(self.system_language)
+    }
+
+    pub(crate) fn localized<'a>(&self, text: &'a str) -> &'a str {
+        crate::with_language(self.language(), || crate::i18n::tr(text))
+    }
+
     pub fn replay(
         Replay {
             points: history,
@@ -232,6 +246,11 @@ impl State {
             recording: false,
             include_processes: false,
             recording_status: None,
+            language_preference: LanguagePreference::System,
+            system_language: Language::French,
+            language_picker: false,
+            save_language: None,
+            language_save_failed: false,
             live_state: None,
             inbox: None,
             command: None,
@@ -325,6 +344,10 @@ impl State {
                 mode.store(true, std::sync::atomic::Ordering::Release);
             }
             let mut replay = Self::replay(points);
+            replay.language_preference = self.language_preference;
+            replay.system_language = self.system_language;
+            replay.save_language = self.save_language;
+            replay.language_save_failed = self.language_save_failed;
             replay.session_commands = self.session_commands.clone();
             replay.session_replies = self.session_replies.clone();
             replay.replay_mode = self.replay_mode.clone();
@@ -344,7 +367,11 @@ impl State {
             return;
         }
         if let Some(prior) = self.live_state.take() {
+            let preference = self.language_preference;
+            let language_save_failed = self.language_save_failed;
             *self = *prior;
+            self.language_preference = preference;
+            self.language_save_failed = language_save_failed;
             self.paused = false;
         } else {
             return;

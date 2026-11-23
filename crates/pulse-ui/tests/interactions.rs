@@ -1,5 +1,70 @@
-use pulse_ui::{Page, State, view};
+use pulse_ui::{Language, LanguagePreference, Page, State, view};
 use rune::{Env, Runtime};
+
+#[test]
+fn language_switches_immediately_without_resetting_the_selected_drive() {
+    let mut state = State::demo();
+    state.navigate(Page::Io);
+    state.publish_storage(std::sync::Arc::new(pulse_testkit::storage(50)));
+    state.system_language = Language::French;
+    state.save_language = Some(|choice| choice == LanguagePreference::English);
+    let mut rt = Runtime::new(
+        state,
+        view,
+        (1024., 640.),
+        Env {
+            system_dark: true,
+            scale: 1.,
+        },
+    );
+    rt.frame(0.);
+    tap(&mut rt, "storage-disk-2");
+    let before = format!("{:?}", rt.elements());
+    assert!(before.contains("Non exposée") && before.contains("Sauvegarde"));
+    tap(&mut rt, "language-toggle");
+    tap(&mut rt, "language-en");
+    let after = format!("{:?}", rt.elements());
+    assert!(
+        after.contains("Storage") && after.contains("Not reported") && after.contains("Sauvegarde")
+    );
+    assert!(!after.contains("Non exposée") && !after.contains("Language not saved"));
+    assert_eq!(rt.state.page, Page::Io);
+    tap(&mut rt, "language-toggle");
+    tap(&mut rt, "language-system");
+    assert!(format!("{:?}", rt.elements()).contains("Non exposée"));
+    assert_eq!(rt.state.language(), Language::French);
+}
+
+#[test]
+fn english_confirmation_keeps_the_original_process_name() {
+    let mut state = State::demo();
+    state.navigate(Page::Processes);
+    state.language_preference = LanguagePreference::English;
+    let key = state.process(0).key;
+    let name = state.process(0).name.clone();
+    state.confirmation = Some((
+        pulse_actions::Command {
+            key,
+            change: pulse_actions::Change::Terminate,
+        },
+        name.clone(),
+    ));
+    state.action_status = Some("Windows a refusé la demande (0x00000005).".into());
+    let mut rt = Runtime::new(
+        state,
+        view,
+        (1440., 900.),
+        Env {
+            system_dark: true,
+            scale: 1.,
+        },
+    );
+    rt.frame(0.);
+    let text = format!("{:?}", rt.elements());
+    assert!(text.contains("Confirm termination") && text.contains(&name));
+    assert!(text.contains("Unsaved data may be lost"));
+    assert!(text.contains("Windows denied the request (0x00000005)."));
+}
 
 #[test]
 fn storage_switches_detail_between_disks_and_never_invents_smart() {

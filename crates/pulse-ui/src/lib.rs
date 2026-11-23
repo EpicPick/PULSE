@@ -1,7 +1,10 @@
 #![forbid(unsafe_code)]
+mod i18n;
 mod model;
 mod monitor;
 mod storage;
+pub use i18n::{Language, LanguagePreference, message as translate_message, with_language};
+use i18n::{tr, trf};
 pub use model::{Page, State};
 
 use pulse_design::{c, card, kit, label, n, table_style};
@@ -139,6 +142,7 @@ fn navigation(s: &State) -> El {
         .fill(c("surface"))
         .border_sides([0., 1., 0., 0.], c("border"));
     for (page, id, title, icon) in NAV {
+        let title = tr(title);
         let active = page == section(s.page);
         nav = nav.child(
             row()
@@ -166,14 +170,16 @@ fn format_sample(s: Sample<f64>) -> String {
     };
     match s.unit {
         Unit::Percent => format!("{v:.1} %"),
-        Unit::BytesPerSecond if v >= MIB as f64 => format!("{:.1} Mio/s", v / MIB as f64),
-        Unit::BytesPerSecond if v >= 1024. => format!("{:.1} Kio/s", v / 1024.),
-        Unit::BytesPerSecond => format!("{v:.1} o/s"),
+        Unit::BytesPerSecond if v >= MIB as f64 => {
+            trf!(("{:.1} Mio/s", "{:.1} MiB/s"), v / MIB as f64)
+        }
+        Unit::BytesPerSecond if v >= 1024. => trf!(("{:.1} Kio/s", "{:.1} KiB/s"), v / 1024.),
+        Unit::BytesPerSecond => trf!(("{v:.1} o/s", "{v:.1} B/s")),
         Unit::Celsius => format!("{v:.0} °C"),
         Unit::Watts => format!("{v:.0} W"),
         Unit::Megahertz => format!("{v:.0} MHz"),
         Unit::Milliseconds => format!("{v:.2} ms"),
-        Unit::Bytes => format!("{:.1} Mio", v / MIB as f64),
+        Unit::Bytes => trf!(("{:.1} Mio", "{:.1} MiB"), v / MIB as f64),
         Unit::Count => format!("{v:.0}"),
         Unit::Path | Unit::PriorityClass => "—".into(),
     }
@@ -181,15 +187,17 @@ fn format_sample(s: Sample<f64>) -> String {
 
 fn provenance<T>(s: &Sample<T>) -> String {
     let status = match s.value {
-        Availability::Available(_) => "Disponible".into(),
-        Availability::Unsupported => "Non pris en charge".into(),
-        Availability::PermissionRequired => "Accès refusé".into(),
-        Availability::Pending => "En attente de mesure".into(),
-        Availability::Error(code) => format!("Erreur {code:#010x}"),
+        Availability::Available(_) => tr("Disponible").into(),
+        Availability::Unsupported => tr("Non pris en charge").into(),
+        Availability::PermissionRequired => tr("Accès refusé").into(),
+        Availability::Pending => tr("En attente de mesure").into(),
+        Availability::Error(code) => trf!(("Erreur {code:#010x}", "Error {code:#010x}")),
     };
     format!(
         "{status} · {} · UTC {} ms · {:?}",
-        s.source, s.utc_ms, s.unit
+        tr(s.source),
+        s.utc_ms,
+        s.unit
     )
 }
 
@@ -213,7 +221,7 @@ fn metric(title: &str, sample: Sample<f64>, ink: &str, note: &str) -> El {
                 if sample.value.get().is_some() {
                     note
                 } else {
-                    "Non disponible"
+                    tr("Non disponible")
                 },
                 "small",
                 "muted",
@@ -266,7 +274,7 @@ fn dashboard_metric(title: &str, icon: &str, sample: Sample<f64>, ink: &str, not
                         if sample.value.get().is_some() {
                             note
                         } else {
-                            "Non disponible"
+                            tr("Non disponible")
                         },
                         "small",
                         "muted",
@@ -394,7 +402,7 @@ fn chart(
     let tick = |i: u64| {
         let delta = elapsed * (4 - i) / 4;
         if i == 4 {
-            "Dernier point".to_owned()
+            tr("Dernier point").to_owned()
         } else if delta >= 60 {
             format!("−{} min {:02}", delta / 60, delta % 60)
         } else {
@@ -410,7 +418,7 @@ fn chart(
         let ticks = (0..total)
             .filter_map(|i| axis_t(i).map(|t| (x(i) / 1000., t)))
             .collect::<Vec<_>>();
-        plot = plot.help("Cliquer ou glisser pour inspecter un échantillon. Les boutons Précédent et Suivant permettent aussi de se déplacer.")
+        plot = plot.help(tr("Cliquer ou glisser pour inspecter un échantillon. Les boutons Précédent et Suivant permettent aussi de se déplacer."))
             .on_drag(move |s: &mut State, drag, tx| {
                 if drag.cancelled() || drag.w <= 0. { return; }
                 let fraction = (drag.x/drag.w).clamp(0.,1.);
@@ -439,9 +447,9 @@ fn chart(
             label(
                 inspection.unwrap_or_else(|| {
                     if total < 2 {
-                        "Historique en attente de mesures".into()
+                        tr("Historique en attente de mesures").into()
                     } else {
-                        "Fenêtre glissante · données manquantes non interpolées".into()
+                        tr("Fenêtre glissante · données manquantes non interpolées").into()
                     }
                 }),
                 "small",
@@ -497,7 +505,7 @@ fn detail_metric<T: Copy>(title: &str, metric: Sample<T>, render: impl Fn(T) -> 
 }
 
 fn mib(value: u64) -> String {
-    format!("{:.1} Mio", value as f64 / MIB as f64)
+    trf!(("{:.1} Mio", "{:.1} MiB"), value as f64 / MIB as f64)
 }
 
 type IconTextures = HashMap<usize, (Weak<[u8]>, rune::Pixels)>;
@@ -558,9 +566,9 @@ fn process_name(s: &State, index: usize) -> El {
         line = line.child(el().w((meta.depth.min(9) * 12) as f32).h(1.));
         line = line.child(if meta.has_children && can_toggle {
             let title = if expanded {
-                "Replier la branche"
+                tr("Replier la branche")
             } else {
-                "Déplier la branche"
+                tr("Déplier la branche")
             };
             let id = format!("branch-{}", model::row_id(key));
             row()
@@ -598,9 +606,9 @@ fn processes(s: &State, width: f32) -> El {
         |s: &State| s.shown.len(),
         |s: &State, i| Cow::Owned(model::row_id(s.process(i).key)),
     )
-    .name("Processus")
+    .name(tr("Processus"))
     .column(
-        TableColumn::new("name", "Nom")
+        TableColumn::new("name", tr("Nom"))
             .flex(1.)
             .min(115.)
             .sortable(),
@@ -618,7 +626,7 @@ fn processes(s: &State, width: f32) -> El {
             .sortable(),
     )
     .column(
-        TableColumn::new("private", "Mémoire privée")
+        TableColumn::new("private", tr("Mémoire privée"))
             .width(126.)
             .align(Align::End)
             .sortable(),
@@ -633,7 +641,7 @@ fn processes(s: &State, width: f32) -> El {
         table
     } else {
         table.column(
-            TableColumn::new("ram", "RAM résid.")
+            TableColumn::new("ram", tr("RAM résid."))
                 .width(105.)
                 .align(Align::End)
                 .sortable(),
@@ -689,43 +697,50 @@ fn processes(s: &State, width: f32) -> El {
                     .center_y()
                     .gap(n("gapSmall"))
                     .child(label(format!("PID {}", p.key.pid), "small", "muted").grow(1.))
-                    .child(action("close-process-detail", "Fermer", false, |s| {
+                    .child(action("close-process-detail", tr("Fermer"), false, |s| {
                         s.select_process(None);
                         s.tab = 0;
                     })),
             )
-            .child(["CPU", "RAM", "E/S", "GPU"].into_iter().enumerate().fold(
-                row().gap(4.),
-                |ui, (index, name)| {
-                    ui.child(
-                        action(&format!("tab-{index}"), name, s.tab == index, move |s| {
-                            s.tab = index
-                        })
-                        .px(6.)
-                        .grow(1.)
-                        .center(),
-                    )
-                },
-            ));
+            .child(
+                ["CPU", "RAM", tr("E/S"), "GPU"]
+                    .into_iter()
+                    .enumerate()
+                    .fold(row().gap(4.), |ui, (index, name)| {
+                        ui.child(
+                            action(&format!("tab-{index}"), name, s.tab == index, move |s| {
+                                s.tab = index
+                            })
+                            .px(6.)
+                            .grow(1.)
+                            .center(),
+                        )
+                    }),
+            );
         if s.tab != 2 {
             details = details.child(inspector_trend(s));
         }
         if s.tab == 0 {
             details = details
                 .child(detail_metric("CPU", p.cpu, |v| format!("{v:.1} %")))
-                .child(detail_metric("Threads", p.threads, |v| v.to_string()))
-                .child(detail_metric("Handles", p.handles, |v| v.to_string()))
-                .child(detail_metric("Priorité", p.priority, |priority| {
-                    priority.label().into()
+                .child(detail_metric(tr("Fils d’exécution"), p.threads, |v| {
+                    v.to_string()
+                }))
+                .child(detail_metric(tr("Handles"), p.handles, |v| v.to_string()))
+                .child(detail_metric(tr("Priorité"), p.priority, |priority| {
+                    tr(priority.label()).into()
                 }))
                 .child(label(
-                    format!("PID parent déclaré : {}", p.parent_pid),
+                    trf!(
+                        ("PID parent déclaré : {}", "Reported parent PID: {}"),
+                        p.parent_pid
+                    ),
                     "small",
                     "muted",
                 ));
             let path = match &p.image_path.value {
                 Availability::Available(path) => path.as_ref(),
-                _ => "Chemin non disponible",
+                _ => tr("Chemin non disponible"),
             };
             details = details.child(
                 label(path, "small", "muted")
@@ -738,7 +753,7 @@ fn processes(s: &State, width: f32) -> El {
                 .child(detail_metric("Private Bytes", p.private_bytes, mib))
                 .child(
                     label(
-                        "Résidente et privée : deux mesures distinctes.",
+                        tr("Résidente et privée : deux mesures distinctes."),
                         "small",
                         "muted",
                     )
@@ -746,15 +761,15 @@ fn processes(s: &State, width: f32) -> El {
                 )
                 .child(action(
                     "open-memory",
-                    "Ouvrir le suivi mémoire",
+                    tr("Ouvrir le suivi mémoire"),
                     true,
                     |s| s.navigate(Page::Memory),
                 ));
         } else if s.tab == 2 {
             details = details
-                .child(detail_metric("Lecture", p.io_read, |_| format_sample(p.io_read)))
-                .child(detail_metric("Écriture", p.io_write, |_| format_sample(p.io_write)))
-                .child(label("E/S totales Windows : fichiers, réseau et périphériques ne sont pas séparés par ce compteur.", "small", "muted").wrap());
+                .child(detail_metric(tr("Lecture"), p.io_read, |_| format_sample(p.io_read)))
+                .child(detail_metric(tr("Écriture"), p.io_write, |_| format_sample(p.io_write)))
+                .child(label(tr("E/S totales Windows : fichiers, réseau et périphériques ne sont pas séparés par ce compteur."), "small", "muted").wrap());
         } else {
             let data = s.snapshot.gpu_processes.as_ref();
             let rows = data
@@ -770,27 +785,29 @@ fn processes(s: &State, width: f32) -> El {
                         "small",
                         "muted",
                     ))
-                    .child(detail_metric("Moteur le plus actif", r.activity, |x| {
+                    .child(detail_metric(tr("Moteur le plus actif"), r.activity, |x| {
                         format!("{x:.1} %")
                     }))
-                    .child(detail_metric("VRAM dédiée", r.dedicated, gpu_memory))
-                    .child(detail_metric("Mémoire partagée", r.shared, gpu_memory));
+                    .child(detail_metric(tr("VRAM dédiée"), r.dedicated, gpu_memory))
+                    .child(detail_metric(tr("Mémoire partagée"), r.shared, gpu_memory));
             }
             if count == 0 {
                 let text = if data.is_none() && !s.demo {
-                    "En attente des compteurs Windows."
+                    tr("En attente des compteurs Windows.")
                 } else {
-                    "Pas de mesure GPU disponible pour cette instance."
+                    tr("Pas de mesure GPU disponible pour cette instance.")
                 };
                 details = details.child(label(text, "small", "muted").wrap());
             }
         }
         details = details.child(
-            action("copy-pid", "Copier le PID", false, |_| {}).on_press_tx(|s: &mut State, tx| {
-                if let Some(p) = s.detail() {
-                    tx.copy(p.key.pid.to_string());
-                }
-            }),
+            action("copy-pid", tr("Copier le PID"), false, |_| {}).on_press_tx(
+                |s: &mut State, tx| {
+                    if let Some(p) = s.detail() {
+                        tx.copy(p.key.pid.to_string());
+                    }
+                },
+            ),
         );
         if !s.paused
             && p.key.pid > 4
@@ -799,12 +816,17 @@ fn processes(s: &State, width: f32) -> El {
             && !s.gaming.busy
             && !s.session_busy
         {
-            details = details.child(action("measure-frames", "Mesurer les FPS…", false, |s| {
-                if let Some(p) = s.detail() {
-                    s.gaming.target = Some((p.key, p.name.clone()));
-                    s.navigate(Page::Gaming);
-                }
-            }));
+            details = details.child(action(
+                "measure-frames",
+                tr("Mesurer les FPS…"),
+                false,
+                |s| {
+                    if let Some(p) = s.detail() {
+                        s.gaming.target = Some((p.key, p.name.clone()));
+                        s.navigate(Page::Gaming);
+                    }
+                },
+            ));
         }
         if s.command.is_some()
             && !s.action_pending
@@ -814,7 +836,7 @@ fn processes(s: &State, width: f32) -> El {
         {
             details = details.child(action(
                 "ask-priority",
-                "Modifier la priorité…",
+                tr("Modifier la priorité…"),
                 false,
                 |s| {
                     if let Some(p) = s.detail() {
@@ -825,13 +847,13 @@ fn processes(s: &State, width: f32) -> El {
         }
     } else {
         details = details
-            .child(label("Détail du processus", "section", "text"))
+            .child(label(tr("Détail du processus"), "section", "text"))
             .child(
                 label(
                     if s.selected.is_some() {
-                        "Cette instance n’est plus observée."
+                        tr("Cette instance n’est plus observée.")
                     } else {
-                        "Sélectionnez une ligne pour inspecter ses métriques."
+                        tr("Sélectionnez une ligne pour inspecter ses métriques.")
                     },
                     "body",
                     "muted",
@@ -840,27 +862,33 @@ fn processes(s: &State, width: f32) -> El {
             );
     }
     let status = if let Some(code) = s.snapshot.process_error {
-        format!("Énumération incomplète · erreur {code:#010x}")
+        trf!((
+            "Énumération incomplète · erreur {code:#010x}",
+            "Incomplete enumeration · error {code:#010x}"
+        ))
     } else {
-        format!(
-            "{} affichés · {} correspondent · {} sans identité accessible",
+        trf!(
+            (
+                "{} affichés · {} correspondent · {} sans identité accessible",
+                "{} shown · {} matched · {} without accessible identity"
+            ),
             s.shown.len(),
             s.matched,
             s.snapshot.skipped
         )
     };
     let mut tools = row().center_y().gap(6.)
-                .child(action("open-monitor","Moniteur",false,|s|s.navigate(Page::Monitor)))
-                .child(action("process-tree", if compact {"Arbre"} else {"Arborescence"}, s.tree, |s| {
+                .child(action("open-monitor",tr("Moniteur"),false,|s|s.navigate(Page::Monitor)))
+                .child(action("process-tree", if compact {tr("Arbre")} else {tr("Arborescence")}, s.tree, |s| {
                     s.tree = !s.tree;
                     s.project();
-                }).help("Tri entre frères ; l’heure de création doit être antérieure pour relier un parent. Les filtres n’affichent que les correspondances."))
+                }).help(tr("Tri entre frères ; l’heure de création doit être antérieure pour relier un parent. Les filtres n’affichent que les correspondances.")))
                 .child(action("active-filter", "CPU ≥ 1 %", s.active_only, |s| {
                     s.active_only = !s.active_only;
                     s.project();
                 }));
     if !compact && s.tracked.is_some() {
-        tools = tools.child(action("active-memory", "Suivi mémoire", false, |s| {
+        tools = tools.child(action("active-memory", tr("Suivi mémoire"), false, |s| {
             s.navigate(Page::Memory)
         }));
     }
@@ -877,7 +905,7 @@ fn processes(s: &State, width: f32) -> El {
         };
         let name = p.name.clone();
         tools = tools.child(
-            action("ask-terminate", "Terminer…", false, move |s| {
+            action("ask-terminate", tr("Terminer…"), false, move |s| {
                 if s.selected == Some(command.key) {
                     s.confirmation = Some((command, name.clone()));
                 }
@@ -901,9 +929,9 @@ fn processes(s: &State, width: f32) -> El {
                 .child(if s.shown.is_empty() {
                     col().grow(1.).center().child(label(
                         if s.snapshot.utc_ms == 0 {
-                            "Lecture des processus Windows…"
+                            tr("Lecture des processus Windows…")
                         } else {
-                            "Aucun processus à afficher"
+                            tr("Aucun processus à afficher")
                         },
                         "body",
                         "muted",
@@ -932,10 +960,10 @@ fn processes(s: &State, width: f32) -> El {
     let snap = &s.snapshot;
     let readout = [
         ("CPU", snap.cpu),
-        ("Mémoire", snap.ram),
+        (tr("Mémoire"), snap.ram),
         ("GPU", snap.gpu),
-        ("Disque", snap.disk),
-        ("Réseau", snap.network),
+        (tr("Disque"), snap.disk),
+        (tr("Réseau"), snap.network),
     ];
     let readout = readout
         .into_iter()
@@ -972,7 +1000,7 @@ fn processes(s: &State, width: f32) -> El {
                 .py(9.)
                 .gap(n("gapSmall"))
                 .border_sides([0., 0., 1., 0.], c("border"))
-                .child(label("Processus", "title", "text").role("heading"))
+                .child(label(tr("Processus"), "title", "text").role("heading"))
                 .child(tools),
         )
         .child(readout)
@@ -984,7 +1012,7 @@ fn processes(s: &State, width: f32) -> El {
                 .py(5.),
         )
         .child(if let Some(text) = &s.action_status {
-            label(text, "small", "text").key("action-status")
+            label(translate_message(text), "small", "text").key("action-status")
         } else {
             el().h(0.)
         })
@@ -1046,9 +1074,9 @@ fn inspector_trend(s: &State) -> El {
         .border_sides([1., 0., 1., 0.], c("border"))
         .child(label(
             [
-                "Charge du processus",
-                "Mémoire privée",
-                "Moteur GPU le plus actif",
+                tr("Charge du processus"),
+                tr("Mémoire privée"),
+                tr("Moteur GPU le plus actif"),
             ][index],
             "small",
             "muted",
@@ -1059,13 +1087,13 @@ fn inspector_trend(s: &State) -> El {
             col()
                 .h(58.)
                 .center()
-                .child(label("En attente de mesures", "small", "muted"))
+                .child(label(tr("En attente de mesures"), "small", "muted"))
         })
         .child(
             row()
                 .justify_between()
                 .child(label("−60 s", "small", "muted"))
-                .child(label("Dernier relevé", "small", "muted")),
+                .child(label(tr("Dernier relevé"), "small", "muted")),
         )
 }
 
@@ -1084,9 +1112,15 @@ fn tabs(s: &State, names: &[&str]) -> El {
 fn overview(s: &State, compact: bool) -> El {
     let snap = &s.snapshot;
     let metrics = [
-        ("CPU", "diagnostic", snap.cpu, "cpu", "Charge globale"),
-        ("Mémoire", "memory", snap.ram, "memory", "RAM physique"),
-        ("GPU", "gpu", snap.gpu, "gpu", "Charge graphique"),
+        ("CPU", "diagnostic", snap.cpu, "cpu", tr("Charge globale")),
+        (
+            tr("Mémoire"),
+            "memory",
+            snap.ram,
+            "memory",
+            tr("RAM physique"),
+        ),
+        ("GPU", "gpu", snap.gpu, "gpu", tr("Charge graphique")),
     ];
     let selected = s.tab.min(metrics.len() - 1);
     let cards = metrics.iter().enumerate().fold(
@@ -1103,7 +1137,7 @@ fn overview(s: &State, compact: bool) -> El {
                     .border(1., c(if selected == i { "primary" } else { "border" }))
                     .hover(c("primaryTint"))
                     .role("button")
-                    .label(format!("Afficher la courbe {title}"))
+                    .label(trf!(("Afficher la courbe {title}", "Show {title} chart")))
                     .focusable(true)
                     .focus_ring(2., 1., c("primary"))
                     .on_press(move |s: &mut State| s.tab = i),
@@ -1115,10 +1149,10 @@ fn overview(s: &State, compact: bool) -> El {
         .grow(1.)
         .min_w(0.)
         .gap(n("gapSmall"))
-        .child(label("En ce moment", "hero", "text").role("heading"))
+        .child(label(tr("En ce moment"), "hero", "text").role("heading"))
         .child(
             label(
-                "Choisis une mesure pour afficher son évolution.",
+                tr("Choisis une mesure pour afficher son évolution."),
                 "body",
                 "muted",
             )
@@ -1129,12 +1163,12 @@ fn overview(s: &State, compact: bool) -> El {
             row()
                 .center_y()
                 .gap(n("gapSmall"))
-                .child(label("Évolution récente", "section", "text").grow(1.))
+                .child(label(tr("Évolution récente"), "section", "text").grow(1.))
                 .child(periods(s)),
         )
         .child(chart(
             s,
-            &format!("{title} · utilisation"),
+            &trf!(("{title} · utilisation", "{title} · usage")),
             "%",
             100.,
             &[(title, ink, series(s, selected))],
@@ -1142,12 +1176,12 @@ fn overview(s: &State, compact: bool) -> El {
     let mut top = card()
         .key("overview-top")
         .gap(n("gapSmall"))
-        .child(label("Qui consomme ?", "section", "text"))
+        .child(label(tr("Qui consomme ?"), "section", "text"))
         .child(label(
             if selected == 1 {
-                "Par mémoire privée"
+                tr("Par mémoire privée")
             } else {
-                "Par charge CPU"
+                tr("Par charge CPU")
             },
             "small",
             "muted",
@@ -1171,7 +1205,14 @@ fn overview(s: &State, compact: bool) -> El {
         .collect();
     ranking.sort_unstable_by(|a, b| b.0.total_cmp(&a.0).then_with(|| a.1.key.cmp(&b.1.key)));
     if ranking.is_empty() {
-        top = top.child(label("Aucune mesure disponible pour le moment.", "small", "muted").wrap());
+        top = top.child(
+            label(
+                tr("Aucune mesure disponible pour le moment."),
+                "small",
+                "muted",
+            )
+            .wrap(),
+        );
     }
     for (rank, p) in ranking.into_iter().take(4) {
         let key = p.key;
@@ -1188,7 +1229,7 @@ fn overview(s: &State, compact: bool) -> El {
                 .border_sides([0., 0., 1., 0.], c("border"))
                 .hover(c("primaryTint"))
                 .role("button")
-                .label(format!("Inspecter {}", p.name))
+                .label(trf!(("Inspecter {}", "Inspect {}"), p.name))
                 .focusable(true)
                 .focus_ring(2., 1., c("primary"))
                 .on_press(move |s: &mut State| {
@@ -1203,17 +1244,17 @@ fn overview(s: &State, compact: bool) -> El {
     }
     top = top.child(row().child(action(
         "overview-processes",
-        "Tous les processus",
+        tr("Tous les processus"),
         false,
         |s| s.navigate(Page::Processes),
     )));
     if selected == 2 {
         top = card()
             .key("overview-top")
-            .child(label("GPU par application", "section", "text"))
+            .child(label(tr("GPU par application"), "section", "text"))
             .child(
                 label(
-                    "Consultez le moteur actif et la mémoire vidéo utilisée par chaque processus.",
+                    tr("Consultez le moteur actif et la mémoire vidéo utilisée par chaque processus."),
                     "body",
                     "muted",
                 )
@@ -1221,7 +1262,7 @@ fn overview(s: &State, compact: bool) -> El {
             )
             .child(row().child(action(
                 "overview-gpu-processes",
-                "Voir les processus GPU",
+                tr("Voir les processus GPU"),
                 true,
                 |s| {
                     s.navigate(Page::Gpu);
@@ -1247,15 +1288,15 @@ fn overview(s: &State, compact: bool) -> El {
                 .child(entry_point(
                     "overview-history",
                     "history",
-                    "Explorer un pic",
-                    "Chronologie et sessions",
+                    tr("Explorer un pic"),
+                    tr("Chronologie et sessions"),
                     Page::History,
                 ))
                 .child(entry_point(
                     "overview-gaming",
                     "game",
-                    "Mesurer les FPS",
-                    "Capture pour un jeu",
+                    tr("Mesurer les FPS"),
+                    tr("Capture pour un jeu"),
                     Page::Gaming,
                 )),
         )
@@ -1263,11 +1304,11 @@ fn overview(s: &State, compact: bool) -> El {
 
 fn material_nav(s: &State) -> El {
     [
-        (Page::Monitor, "direct-monitor", "Moniteur"),
-        (Page::Overview, "direct-home", "Courbes"),
-        (Page::Performance, "direct-cpu", "Détail CPU"),
-        (Page::Gpu, "direct-gpu", "Détail GPU"),
-        (Page::Io, "direct-io", "Disque et réseau"),
+        (Page::Monitor, "direct-monitor", tr("Moniteur")),
+        (Page::Overview, "direct-home", tr("Courbes")),
+        (Page::Performance, "direct-cpu", tr("Détail CPU")),
+        (Page::Gpu, "direct-gpu", tr("Détail GPU")),
+        (Page::Io, "direct-io", tr("Disque et réseau")),
     ]
     .into_iter()
     .fold(
@@ -1314,14 +1355,14 @@ fn entry_point(id: &str, icon: &str, title: &str, subtitle: &str, page: Page) ->
 }
 
 fn performance(s: &State) -> El {
-    let mut cores = card().child(label("Processeurs logiques", "section", "text"));
+    let mut cores = card().child(label(tr("Processeurs logiques"), "section", "text"));
     if s.snapshot.logical_cpus.is_empty() {
         let reason = if s.replay {
-            "La session ne stocke pas le détail par processeur."
+            tr("La session ne stocke pas le détail par processeur.")
         } else if matches!(s.snapshot.logical_cpu_status, Availability::Pending) {
-            "En attente des compteurs Windows."
+            tr("En attente des compteurs Windows.")
         } else {
-            "Compteurs détaillés non disponibles."
+            tr("Compteurs détaillés non disponibles.")
         };
         cores = cores.child(label(reason, "body", "muted"));
     } else {
@@ -1362,7 +1403,7 @@ fn performance(s: &State) -> El {
             });
             cores = cores.child(line);
         }
-        cores = cores.child(label("La fréquence est celle exposée par le compteur Windows, pas une mesure de fréquence effective.","small","muted"));
+        cores = cores.child(label(tr("La fréquence est celle exposée par le compteur Windows, pas une mesure de fréquence effective."),"small","muted"));
     }
     col()
         .gap(n("gap"))
@@ -1371,18 +1412,23 @@ fn performance(s: &State) -> El {
                 .center_y()
                 .child(
                     heading(
-                        "Détail CPU",
-                        "Charge globale, fréquence et activité par processeur logique.",
+                        tr("Détail CPU"),
+                        tr("Charge globale, fréquence et activité par processeur logique."),
                     )
                     .grow(1.),
                 )
                 .child(periods(s)),
         )
-        .child(metrics(&[("CPU", s.snapshot.cpu, "cpu", "Charge globale")]))
+        .child(metrics(&[(
+            "CPU",
+            s.snapshot.cpu,
+            "cpu",
+            tr("Charge globale"),
+        )]))
         .child(monitor::cpu_temperature(s))
         .child(chart(
             s,
-            "Charge CPU",
+            tr("Charge CPU"),
             "%",
             100.,
             &[("CPU", "cpu", series(s, 0))],
@@ -1394,10 +1440,10 @@ fn io(s: &State, compact: bool) -> El {
     let shell = col()
         .gap(n("gap"))
         .child(heading(
-            "Stockage et réseau",
-            "Débits agrégés et historique de la session en cours.",
+            tr("Stockage et réseau"),
+            tr("Débits agrégés et historique de la session en cours."),
         ))
-        .child(tabs(s, &["Stockage", "Réseau", "Connexions"]));
+        .child(tabs(s, &[tr("Stockage"), tr("Réseau"), tr("Connexions")]));
     if s.tab == 2 {
         return shell.child(network_connections(s));
     }
@@ -1408,11 +1454,11 @@ fn io(s: &State, compact: bool) -> El {
     let mut values = series(s, s.tab.min(1));
     let peak = values.iter().flatten().copied().fold(0., f64::max);
     let (unit, divisor) = if peak >= MIB as f64 {
-        ("Mio/s", MIB as f64)
+        (tr("Mio/s"), MIB as f64)
     } else if peak >= 1024. {
-        ("Kio/s", 1024.)
+        (tr("Kio/s"), 1024.)
     } else {
-        ("o/s", 1.)
+        (tr("o/s"), 1.)
     };
     for value in values.iter_mut().flatten() {
         *value /= divisor;
@@ -1420,15 +1466,19 @@ fn io(s: &State, compact: bool) -> El {
     let limit = (peak / divisor / 4.).ceil().max(1.) * 4.;
     let (metric, color, scope) = if disk {
         (
-            "Lecture + écriture",
+            tr("Lecture + écriture"),
             "disk",
-            "Le compteur PhysicalDisk agrège les octets lus et écrits. Il ne mesure ni la latence, ni le débit d’un processus.",
+            tr(
+                "Le compteur PhysicalDisk agrège les octets lus et écrits. Il ne mesure ni la latence, ni le débit d’un processus.",
+            ),
         )
     } else {
         (
-            "Réception + émission",
+            tr("Réception + émission"),
             "network",
-            "Somme des interfaces matérielles Ethernet et Wi-Fi actives. Boucles locales, tunnels et interfaces virtuelles ne sont pas inclus.",
+            tr(
+                "Somme des interfaces matérielles Ethernet et Wi-Fi actives. Boucles locales, tunnels et interfaces virtuelles ne sont pas inclus.",
+            ),
         )
     };
     let current = if disk {
@@ -1439,16 +1489,16 @@ fn io(s: &State, compact: bool) -> El {
     let shell = if disk && !s.replay {
         shell.child(metrics(&[
             (
-                "Latence lecture",
+                tr("Latence lecture"),
                 s.snapshot.disk_read_latency,
                 "disk",
-                "Moyenne · disques physiques",
+                tr("Moyenne · disques physiques"),
             ),
             (
-                "Latence écriture",
+                tr("Latence écriture"),
                 s.snapshot.disk_write_latency,
                 "warning",
-                "Moyenne · disques physiques",
+                tr("Moyenne · disques physiques"),
             ),
         ]))
     } else {
@@ -1456,26 +1506,36 @@ fn io(s: &State, compact: bool) -> El {
     };
     shell
         .child(metrics(&[
-            ("Disque", s.snapshot.disk, "disk", "Lecture et écriture"),
-            ("Réseau", s.snapshot.network, "network", "Ethernet et Wi-Fi"),
+            (
+                tr("Disque"),
+                s.snapshot.disk,
+                "disk",
+                tr("Lecture et écriture"),
+            ),
+            (
+                tr("Réseau"),
+                s.snapshot.network,
+                "network",
+                tr("Ethernet et Wi-Fi"),
+            ),
         ]))
         .child(periods(s))
         .child(if peak > 0. || values.iter().any(Option::is_some) {
             chart(
                 s,
-                "Historique des débits",
+                tr("Historique des débits"),
                 unit,
                 limit,
                 &[(metric, color, values)],
             )
         } else {
             panel(
-                "Aucun débit mesuré sur cette période",
+                tr("Aucun débit mesuré sur cette période"),
                 &provenance(&current),
                 "info",
             )
         })
-        .child(panel("Périmètre de la mesure", scope, "info"))
+        .child(panel(tr("Périmètre de la mesure"), scope, "info"))
 }
 
 fn network_connections(s: &State) -> El {
@@ -1483,20 +1543,22 @@ fn network_connections(s: &State) -> El {
     let Some(data) = &s.snapshot.endpoints else {
         return if s.demo || s.replay {
             panel(
-                "Connexions non enregistrées",
-                "L’inventaire est disponible uniquement pendant la collecte locale. Aucune adresse ou port n’est conservé.",
+                tr("Connexions non enregistrées"),
+                tr(
+                    "L’inventaire est disponible uniquement pendant la collecte locale. Aucune adresse ou port n’est conservé.",
+                ),
                 "info",
             )
         } else if s.paused {
             panel(
-                "Affichage en pause",
-                "Reprenez la collecte pour actualiser la liste.",
+                tr("Affichage en pause"),
+                tr("Reprenez la collecte pour actualiser la liste."),
                 "info",
             )
         } else {
             panel(
-                "Lecture des connexions Windows",
-                "La liste s’affichera après le prochain échantillon.",
+                tr("Lecture des connexions Windows"),
+                tr("La liste s’affichera après le prochain échantillon."),
                 "info",
             )
         };
@@ -1527,7 +1589,7 @@ fn network_connections(s: &State) -> El {
     let pages = filtered.len().div_ceil(page_size).max(1);
     let page = s.network_page.min(pages - 1);
     let edit = TextInput::new(&s.network_query)
-        .placeholder("Filtrer par PID, port, TCP ou UDP…")
+        .placeholder(tr("Filtrer par PID, port, TCP ou UDP…"))
         .on_edit(|s: &mut State| &mut s.network_query)
         .on_change(|s: &mut State, _| s.network_page = 0)
         .build(&kit())
@@ -1566,7 +1628,13 @@ fn network_connections(s: &State) -> El {
             .child(label(texts[4], "small", ink).w(70.))
     };
     let mut table = card().key("connections-table").gap(0.).child(columns(
-        ["Proto", "Adresse locale", "Adresse distante", "État", "PID"],
+        [
+            tr("Proto"),
+            tr("Adresse locale"),
+            tr("Adresse distante"),
+            tr("État"),
+            "PID",
+        ],
         true,
     ));
     for endpoint in filtered.iter().skip(page * page_size).take(page_size) {
@@ -1582,15 +1650,15 @@ fn network_connections(s: &State) -> El {
         let local = endpoint.local.to_string();
         let remote = endpoint.remote.map_or("—".into(), |a| a.to_string());
         let state = match endpoint.tcp_state {
-            None => "Port lié",
-            Some(1) => "Fermé",
-            Some(2) => "En écoute",
-            Some(3 | 4) => "Négociation",
-            Some(5) => "Établie",
-            Some(6..=10) => "Fermeture",
+            None => tr("Port lié"),
+            Some(1) => tr("Fermé"),
+            Some(2) => tr("En écoute"),
+            Some(3 | 4) => tr("Négociation"),
+            Some(5) => tr("Établie"),
+            Some(6..=10) => tr("Fermeture"),
             Some(11) => "TIME_WAIT",
-            Some(12) => "Supprimée",
-            Some(_) => "État inconnu",
+            Some(12) => tr("Supprimée"),
+            Some(_) => tr("État inconnu"),
         };
         table = table.child(columns(
             [&protocol, &local, &remote, state, &endpoint.pid.to_string()],
@@ -1600,7 +1668,7 @@ fn network_connections(s: &State) -> El {
     if filtered.is_empty() {
         table = table.child(
             label(
-                "Aucun résultat parmi les tables accessibles",
+                tr("Aucun résultat parmi les tables accessibles"),
                 "body",
                 "muted",
             )
@@ -1613,38 +1681,44 @@ fn network_connections(s: &State) -> El {
         .zip(["TCPv4", "TCPv6", "UDPv4", "UDPv6"])
         .filter_map(|(status, name)| status.get().is_none().then_some(name))
         .collect();
-    let details = format!(
-        "IP Helper · UTC {} ms · {} correspondance(s) · {} hors limite{}",
+    let details = trf!(
+        (
+            "IP Helper · UTC {} ms · {} correspondance(s) · {} hors limite{}",
+            "IP Helper · UTC {} ms · {} match(es) · {} over limit{}"
+        ),
         data.utc_ms,
         filtered.len(),
         data.omitted,
         if missing.is_empty() {
             String::new()
         } else {
-            format!(" · indisponible : {}", missing.join(", "))
+            trf!(
+                (" · indisponible : {}", " · unavailable: {}"),
+                missing.join(", ")
+            )
         }
     );
     col().gap(n("gapSmall"))
         .child(row().gap(n("gapSmall")).center_y().child(edit)
-            .child(action("connections-prev","Précédent",false,move |s|s.network_page=page.saturating_sub(1)))
+            .child(action("connections-prev",tr("Précédent"),false,move |s|s.network_page=page.saturating_sub(1)))
             .child(label(format!("{} / {pages}",page+1),"small","muted"))
-            .child(action("connections-next","Suivant",false,move |s|s.network_page=(page+1).min(pages-1))))
+            .child(action("connections-next",tr("Suivant"),false,move |s|s.network_page=(page+1).min(pages-1))))
         .child(table)
         .child(label(details,"small","muted").wrap().key("connections-count"))
-        .child(label("PID fourni par Windows au moment de l’inventaire. Aucun nom de processus ni débit par connexion n’est déduit. Adresses non enregistrées.","small","muted").wrap())
+        .child(label(tr("PID fourni par Windows au moment de l’inventaire. Aucun nom de processus ni débit par connexion n’est déduit. Adresses non enregistrées."),"small","muted").wrap())
 }
 
 fn gpu(s: &State) -> El {
     let title = heading(
         if s.demo {
-            "GPU — Adaptateur de démonstration"
+            tr("GPU — Adaptateur de démonstration")
         } else {
-            "GPU Inspector"
+            tr("Inspecteur GPU")
         },
         if s.demo {
-            "Adaptateur de démonstration · scénario de rendu 3D"
+            tr("Adaptateur de démonstration · scénario de rendu 3D")
         } else {
-            "Adaptateurs et moteurs graphiques"
+            tr("Adaptateurs et moteurs graphiques")
         },
     );
     if !s.demo {
@@ -1658,25 +1732,31 @@ fn gpu(s: &State) -> El {
     };
     let mut result = col().gap(n("gap")).child(title).child(tabs(
         s,
-        &["Aperçu", "Par processus", "Moteurs", "VRAM", "Températures"],
+        &[
+            tr("Aperçu"),
+            tr("Par processus"),
+            tr("Moteurs"),
+            "VRAM",
+            tr("Températures"),
+        ],
     ));
     let load = s.snapshot.gpu.value.get().unwrap_or_default();
     let engines = card()
         .grow(1.)
         .min_w(0.)
-        .child(label("Moteurs GPU · fixture", "section", "text"))
+        .child(label(tr("Moteurs GPU · fixture"), "section", "text"))
         .child(bar("3D / Graphics", load, "cpu"))
-        .child(bar("Compute", 18., "cpu"))
-        .child(bar("Copy", 6., "cpu"))
-        .child(bar("Video", 2., "cpu"));
+        .child(bar(tr("Calcul"), 18., "cpu"))
+        .child(bar(tr("Copie"), 6., "cpu"))
+        .child(bar(tr("Vidéo"), 2., "cpu"));
     let consumers = card()
-        .child(label("Processus utilisant le GPU", "section", "text"))
-        .child(info_row("Studio Render.exe", "64 % · 10,4 Gio"))
-        .child(info_row("Media Player.exe", "6 % · 1,1 Gio"))
-        .child(info_row("Navigateur Atlas.exe", "3 % · 324 Mio"))
-        .child(info_row("Desktop Shell.exe", "1 % · 128 Mio"))
+        .child(label(tr("Processus utilisant le GPU"), "section", "text"))
+        .child(info_row("Studio Render.exe", tr("64 % · 10,4 Gio")))
+        .child(info_row("Media Player.exe", tr("6 % · 1,1 Gio")))
+        .child(info_row("Navigateur Atlas.exe", tr("3 % · 324 Mio")))
+        .child(info_row("Desktop Shell.exe", tr("1 % · 128 Mio")))
         .child(label(
-            "Répartition du scénario de démonstration",
+            tr("Répartition du scénario de démonstration"),
             "small",
             "muted",
         ));
@@ -1691,12 +1771,12 @@ fn gpu(s: &State) -> El {
                             .grow(1.)
                             .min_w(0.)
                             .child(info_row(
-                                "VRAM dédiée",
+                                tr("VRAM dédiée"),
                                 &format!("{:.1} %", 27. + load * 0.45),
                             ))
-                            .child(info_row("Température", "64 °C"))
-                            .child(info_row("Fréquence", "1 830 MHz"))
-                            .child(info_row("Consommation", "124 W")),
+                            .child(info_row(tr("Température"), "64 °C"))
+                            .child(info_row(tr("Fréquence"), "1 830 MHz"))
+                            .child(info_row(tr("Consommation"), "124 W")),
                     )
                     .child(engines),
             )
@@ -1706,7 +1786,7 @@ fn gpu(s: &State) -> El {
                     .gap(n("gapInner"))
                     .child(chart(
                         s,
-                        "Utilisation & VRAM",
+                        tr("Utilisation & VRAM"),
                         "%",
                         100.,
                         &[("GPU", "gpu", series(s, 2)), ("VRAM", "cpu", vram())],
@@ -1717,21 +1797,21 @@ fn gpu(s: &State) -> El {
         result = match s.tab {
             1 => result.child(consumers),
             2 => result.child(engines).child(panel(
-                "Lecture des compteurs",
-                "Les pourcentages de moteurs indépendants ne s’additionnent pas.",
+                tr("Lecture des compteurs"),
+                tr("Les pourcentages de moteurs indépendants ne s’additionnent pas."),
                 "info",
             )),
             3 => result.child(periods(s)).child(chart(
                 s,
-                "VRAM dédiée",
+                tr("VRAM dédiée"),
                 "%",
                 100.,
                 &[("VRAM", "cpu", vram())],
             )),
             _ => result.child(
                 card()
-                    .child(info_row("Température GPU · simulée", "64 °C"))
-                    .child(info_row("Puissance · simulée", "124 W")),
+                    .child(info_row(tr("Température GPU · simulée"), "64 °C"))
+                    .child(info_row(tr("Puissance · simulée"), "124 W")),
             ),
         };
     }
@@ -1740,13 +1820,23 @@ fn gpu(s: &State) -> El {
 
 fn gpu_live(s: &State) -> El {
     let adapters = &s.snapshot.adapters;
-    let menu = |s: &State| tabs(s, &["Aperçu", "Vidéo", "Capteurs", "Par processus"]);
+    let menu = |s: &State| {
+        tabs(
+            s,
+            &[
+                tr("Aperçu"),
+                tr("Vidéo"),
+                tr("Capteurs"),
+                tr("Par processus"),
+            ],
+        )
+    };
     if s.tab == 3 {
         return col()
             .gap(n("gap"))
             .child(heading(
-                "GPU · Par processus",
-                "Mesures locales Windows WDDM",
+                tr("GPU · Par processus"),
+                tr("Mesures locales Windows WDDM"),
             ))
             .child(menu(s))
             .child(gpu_process_table(s));
@@ -1758,19 +1848,21 @@ fn gpu_live(s: &State) -> El {
         .or_else(|| adapters.first())
     else {
         let reason = if s.replay {
-            "La session ne contient pas d’inventaire matériel."
+            tr("La session ne contient pas d’inventaire matériel.")
         } else {
-            "Aucun capteur NVIDIA accessible. L’onglet « Par processus » utilise les compteurs Windows indépendamment de la marque du GPU."
+            tr(
+                "Aucun capteur NVIDIA accessible. L’onglet « Par processus » utilise les compteurs Windows indépendamment de la marque du GPU.",
+            )
         };
         return col()
             .gap(n("gap"))
             .child(heading(
                 "GPU",
-                "Activité et capteurs de l’adaptateur graphique",
+                tr("Activité et capteurs de l’adaptateur graphique"),
             ))
             .child(menu(s))
             .child(
-                panel("Adaptateur indisponible", reason, "info").child(label(
+                panel(tr("Adaptateur indisponible"), reason, "info").child(label(
                     provenance(&s.snapshot.gpu),
                     "small",
                     "muted",
@@ -1779,7 +1871,7 @@ fn gpu_live(s: &State) -> El {
     };
     let mut shell = col().gap(n("gap")).child(heading(
         &format!("GPU — {}", adapter.name),
-        "Mesures locales NVIDIA NVML · par adaptateur",
+        tr("Mesures locales NVIDIA NVML · par adaptateur"),
     ));
     if adapters.len() > 1 {
         let selector = adapters
@@ -1805,18 +1897,20 @@ fn gpu_live(s: &State) -> El {
             .grow(1.)
             .min_w(0.)
             .child(detail_metric(
-                "Température GPU",
+                tr("Température GPU"),
                 adapter.temperature,
                 |v| format!("{v:.0} °C"),
             ))
-            .child(detail_metric("Fréquence graphique", adapter.clock, |v| {
-                format!("{v:.0} MHz")
-            }))
-            .child(detail_metric("Puissance GPU", adapter.power, |v| {
+            .child(detail_metric(
+                tr("Fréquence graphique"),
+                adapter.clock,
+                |v| format!("{v:.0} MHz"),
+            ))
+            .child(detail_metric(tr("Puissance GPU"), adapter.power, |v| {
                 format!("{v:.1} W")
             }))
             .child(detail_metric(
-                "Ventilateur 1 · consigne",
+                tr("Ventilateur 1 · consigne"),
                 adapter.fan,
                 |v| format!("{v:.0} %"),
             ))
@@ -1825,16 +1919,16 @@ fn gpu_live(s: &State) -> El {
         card()
             .grow(1.)
             .min_w(0.)
-            .child(label("Moteurs vidéo", "section", "text"))
-            .child(detail_metric("Encodage", adapter.encode, |v| {
+            .child(label(tr("Moteurs vidéo"), "section", "text"))
+            .child(detail_metric(tr("Encodage"), adapter.encode, |v| {
                 format!("{v:.0} %")
             }))
-            .child(detail_metric("Décodage", adapter.decode, |v| {
+            .child(detail_metric(tr("Décodage"), adapter.decode, |v| {
                 format!("{v:.0} %")
             }))
             .child(
                 label(
-                    "Le détail WDDM 3D, Compute, Copy et par processus n’est pas collecté.",
+                    tr("Le détail WDDM 3D, Compute, Copy et par processus n’est pas collecté."),
                     "small",
                     "muted",
                 )
@@ -1860,7 +1954,7 @@ fn gpu_live(s: &State) -> El {
                             .utilization
                             .value
                             .get()
-                            .map_or_else(|| label("Non mesuré", "body", "muted"), gauge),
+                            .map_or_else(|| label(tr("Non mesuré"), "body", "muted"), gauge),
                     ),
             )
             .child(sensors())
@@ -1868,20 +1962,20 @@ fn gpu_live(s: &State) -> El {
                 card()
                     .grow(1.)
                     .min_w(0.)
-                    .child(label("Mémoire vidéo", "section", "text"))
+                    .child(label(tr("Mémoire vidéo"), "section", "text"))
                     .child(detail_metric(
-                        "VRAM occupée / réservée",
+                        tr("VRAM occupée / réservée"),
                         adapter.vram_used,
-                        |v| format!("{:.2} Gio", v / 1_073_741_824.),
+                        |v| trf!(("{:.2} Gio", "{:.2} GiB"), v / 1_073_741_824.),
                     ))
                     .child(detail_metric(
-                        "Capacité physique",
+                        tr("Capacité physique"),
                         adapter.vram_total,
-                        |v| format!("{:.2} Gio", v / 1_073_741_824.),
+                        |v| trf!(("{:.2} Gio", "{:.2} GiB"), v / 1_073_741_824.),
                     ))
                     .child(
                         label(
-                            "La VRAM partagée et le détail par processus ne sont pas mesurés.",
+                            tr("La VRAM partagée et le détail par processus ne sont pas mesurés."),
                             "small",
                             "muted",
                         )
@@ -1895,7 +1989,7 @@ fn gpu_live(s: &State) -> El {
                 .gap(n("gapInner"))
                 .child(chart(
                     s,
-                    "Historique de l’activité GPU",
+                    tr("Historique de l’activité GPU"),
                     "%",
                     100.,
                     &[("GPU", "gpu", series(s, 2))],
@@ -1904,8 +1998,8 @@ fn gpu_live(s: &State) -> El {
         )
     } else {
         shell.child(panel(
-            "Historique non enregistré",
-            "Le graphique de session suit uniquement le premier adaptateur NVIDIA détecté.",
+            tr("Historique non enregistré"),
+            tr("Le graphique de session suit uniquement le premier adaptateur NVIDIA détecté."),
             "info",
         ))
     }
@@ -1913,9 +2007,9 @@ fn gpu_live(s: &State) -> El {
 
 fn gpu_memory(bytes: f64) -> String {
     if bytes >= 1_073_741_824. {
-        format!("{:.2} Gio", bytes / 1_073_741_824.)
+        trf!(("{:.2} Gio", "{:.2} GiB"), bytes / 1_073_741_824.)
     } else {
-        format!("{:.1} Mio", bytes / MIB as f64)
+        trf!(("{:.1} Mio", "{:.1} MiB"), bytes / MIB as f64)
     }
 }
 
@@ -1923,20 +2017,22 @@ fn gpu_process_table(s: &State) -> El {
     let Some(data) = &s.snapshot.gpu_processes else {
         return if s.replay {
             panel(
-                "Non enregistré",
-                "Le détail GPU par processus est disponible en direct, pas dans les sessions enregistrées par cette version.",
+                tr("Non enregistré"),
+                tr(
+                    "Le détail GPU par processus est disponible en direct, pas dans les sessions enregistrées par cette version.",
+                ),
                 "info",
             )
         } else if s.paused {
             panel(
-                "Affichage en pause",
-                "Reprenez la collecte pour obtenir les compteurs GPU.",
+                tr("Affichage en pause"),
+                tr("Reprenez la collecte pour obtenir les compteurs GPU."),
                 "info",
             )
         } else {
             panel(
-                "Lecture des compteurs WDDM",
-                "Patientez le temps de réunir deux échantillons du pilote.",
+                tr("Lecture des compteurs WDDM"),
+                tr("Patientez le temps de réunir deux échantillons du pilote."),
                 "info",
             )
         };
@@ -1999,12 +2095,12 @@ fn gpu_process_table(s: &State) -> El {
     };
     let mut table = card().key("gpu-process-table").gap(0.).child(columns(
         [
-            "Processus",
+            tr("Processus"),
             "PID",
-            "Adaptateur",
-            "Moteur actif max.",
-            "VRAM dédiée",
-            "Partagée",
+            tr("Adaptateur"),
+            tr("Moteur actif max."),
+            tr("VRAM dédiée"),
+            tr("Partagée"),
         ],
         true,
     ));
@@ -2015,7 +2111,7 @@ fn gpu_process_table(s: &State) -> El {
             |x| {
                 format!(
                     "{} · {x:.1} %",
-                    p.busiest_engine.as_deref().unwrap_or("Moteur")
+                    p.busiest_engine.as_deref().unwrap_or(tr("Moteur"))
                 )
             },
         );
@@ -2039,21 +2135,25 @@ fn gpu_process_table(s: &State) -> El {
     }
     if rows.is_empty() {
         table = table.child(
-            label("Aucune ligne GPU mesurable pour le moment", "body", "muted")
-                .padding(n("gapSmall")),
+            label(
+                tr("Aucune ligne GPU mesurable pour le moment"),
+                "body",
+                "muted",
+            )
+            .padding(n("gapSmall")),
         );
     }
     let summary = data
         .status
         .iter()
-        .zip(["activité", "dédiée", "partagée"])
+        .zip([tr("activité"), tr("dédiée"), tr("partagée")])
         .map(|(status, name)| {
             let status = match status {
-                Availability::Available(_) => "disponible",
-                Availability::Pending => "en attente",
-                Availability::Unsupported => "non pris en charge",
-                Availability::PermissionRequired => "accès refusé",
-                Availability::Error(_) => "erreur",
+                Availability::Available(_) => tr("disponible"),
+                Availability::Pending => tr("en attente"),
+                Availability::Unsupported => tr("non pris en charge"),
+                Availability::PermissionRequired => tr("accès refusé"),
+                Availability::Error(_) => tr("erreur"),
             };
             format!("{name} : {status}")
         })
@@ -2061,15 +2161,15 @@ fn gpu_process_table(s: &State) -> El {
         .join(" · ");
     col().gap(n("gapSmall"))
         .child(row().gap(n("gapSmall")).center_y()
-            .child(action("gpu-sort-activity","Activité",!s.gpu_sort_memory,|s| {s.gpu_sort_memory=false;s.gpu_process_page=0;}))
-            .child(action("gpu-sort-vram","VRAM dédiée",s.gpu_sort_memory,|s| {s.gpu_sort_memory=true;s.gpu_process_page=0;}))
+            .child(action("gpu-sort-activity",tr("Activité"),!s.gpu_sort_memory,|s| {s.gpu_sort_memory=false;s.gpu_process_page=0;}))
+            .child(action("gpu-sort-vram",tr("VRAM dédiée"),s.gpu_sort_memory,|s| {s.gpu_sort_memory=true;s.gpu_process_page=0;}))
             .child(el().grow(1.))
-            .child(action("gpu-process-prev","Précédent",false,move |s|s.gpu_process_page=page.saturating_sub(1)))
+            .child(action("gpu-process-prev",tr("Précédent"),false,move |s|s.gpu_process_page=page.saturating_sub(1)))
             .child(label(format!("{} / {pages}",page+1),"small","muted"))
-            .child(action("gpu-process-next","Suivant",false,move |s|s.gpu_process_page=(page+1).min(pages-1))))
+            .child(action("gpu-process-next",tr("Suivant"),false,move |s|s.gpu_process_page=(page+1).min(pages-1))))
         .child(table)
-        .child(label(format!("WDDM · UTC {} ms · {summary} · {} mesures hors limite",data.utc_ms,data.excluded),"small","muted").wrap())
-        .child(label("Maximum par moteur, pas une somme ni la charge globale de l’adaptateur. Les PID non vérifiables entre deux relevés ne sont pas affichés.","small","muted").wrap())
+        .child(label(trf!(("WDDM · UTC {} ms · {summary} · {} mesures hors limite", "WDDM · UTC {} ms · {summary} · {} readings over limit"),data.utc_ms,data.excluded),"small","muted").wrap())
+        .child(label(tr("Maximum par moteur, pas une somme ni la charge globale de l’adaptateur. Les PID non vérifiables entre deux relevés ne sont pas affichés."),"small","muted").wrap())
 }
 
 fn info_row(title: &str, value: &str) -> El {
@@ -2122,32 +2222,32 @@ fn gauge(value: f64) -> El {
                 .absolute(0., 0.),
         )
         .child(label(format!("{value:.0} %"), "value", "text"))
-        .child(label("Utilisation", "small", "muted"))
+        .child(label(tr("Utilisation"), "small", "muted"))
 }
 
 fn memory(s: &State) -> El {
     let mut result = col()
         .gap(n("gap"))
-        .child(tabs(s, &["Fuite mémoire", "Interprétation"]))
+        .child(tabs(s, &[tr("Fuite mémoire"), tr("Interprétation")]))
         .child(panel(
-            "Détection de fuite mémoire",
-            "Surveille l’évolution de la mémoire pour repérer les croissances anormales.",
+            tr("Détection de fuite mémoire"),
+            tr("Surveille l’évolution de la mémoire pour repérer les croissances anormales."),
             "warning",
         ));
     if s.tab == 1 {
-        return result.child(panel("Une tendance n’est pas une preuve","Un cache, un chargement ou un changement de charge peuvent expliquer une croissance de Private Bytes. Comparez des charges reproductibles et inspectez les allocations avec un profileur.","warning"));
+        return result.child(panel(tr("Une tendance n’est pas une preuve"),tr("Un cache, un chargement ou un changement de charge peuvent expliquer une croissance de Private Bytes. Comparez des charges reproductibles et inspectez les allocations avec un profileur."),"warning"));
     }
     if !s.demo {
         if s.replay {
             return result.child(panel(
-                "Mesures individuelles non enregistrées",
-                "Cette session contient uniquement des agrégats système.",
+                tr("Mesures individuelles non enregistrées"),
+                tr("Cette session contient uniquement des agrégats système."),
                 "info",
             ));
         }
         let mut controls = row().gap(n("gapSmall")).child(action(
             "go-processes",
-            "Choisir un processus",
+            tr("Choisir un processus"),
             false,
             |s| s.navigate(Page::Processes),
         ));
@@ -2155,7 +2255,7 @@ fn memory(s: &State) -> El {
             let key = p.key;
             controls = controls.child(action(
                 "track-selected",
-                "Suivre la sélection",
+                tr("Suivre la sélection"),
                 false,
                 move |s| {
                     s.tracked = Some(key);
@@ -2165,7 +2265,7 @@ fn memory(s: &State) -> El {
         }
         result = result.child(controls);
         let Some(key) = s.tracked else {
-            return result.child(panel("Aucun suivi actif","Sélectionnez un processus, puis démarrez le suivi. Un seul processus est suivi à la fois.","info"));
+            return result.child(panel(tr("Aucun suivi actif"),tr("Sélectionnez un processus, puis démarrez le suivi. Un seul processus est suivi à la fois."),"info"));
         };
         let observed = s.snapshot.processes.iter().find(|p| p.key == key);
         let data = |i: usize| {
@@ -2189,13 +2289,25 @@ fn memory(s: &State) -> El {
         );
         return result
             .child(panel(
-                "Instance surveillée",
+                tr("Instance surveillée"),
                 &observed.map_or_else(
-                    || format!("PID {} · cette instance n’est plus observée.", key.pid),
+                    || {
+                        trf!(
+                            (
+                                "PID {} · cette instance n’est plus observée.",
+                                "PID {} · this instance is no longer observed."
+                            ),
+                            key.pid
+                        )
+                    },
                     |p| {
-                        format!(
-                            "{} · PID {} · échantillon toutes les 6 s environ",
-                            p.name, key.pid
+                        trf!(
+                            (
+                                "{} · PID {} · échantillon toutes les 6 s environ",
+                                "{} · PID {} · sampled about every 6 s"
+                            ),
+                            p.name,
+                            key.pid
                         )
                     },
                 ),
@@ -2206,8 +2318,8 @@ fn memory(s: &State) -> El {
                     .gap(n("gapInner"))
                     .child(chart(
                         s,
-                        "Évolution de la mémoire",
-                        "Mio",
+                        tr("Évolution de la mémoire"),
+                        tr("Mio"),
                         max,
                         &[
                             ("Private Bytes", "memory", private),
@@ -2233,7 +2345,7 @@ fn memory(s: &State) -> El {
     result
         .child(panel(
             "Studio Render.exe  ·  PID 4200",
-            "Scénario indépendant · 31 échantillons espacés d’une minute",
+            tr("Scénario indépendant · 31 échantillons espacés d’une minute"),
             "info",
         ))
         .child(
@@ -2241,13 +2353,13 @@ fn memory(s: &State) -> El {
                 .gap(n("gapInner"))
                 .child(chart(
                     s,
-                    "Évolution de la mémoire",
-                    "Mio",
+                    tr("Évolution de la mémoire"),
+                    tr("Mio"),
                     1000.,
                     &[
-                        ("Mémoire privée", "cpu", private),
+                        (tr("Mémoire privée"), "cpu", private),
                         ("Working Set", "network", test(-60.)),
-                        ("Engagée · fixture", "memory", test(120.)),
+                        (tr("Engagée · fixture"), "memory", test(120.)),
                     ],
                 ))
                 .child(finding_panel(finding).w(250.)),
@@ -2258,14 +2370,14 @@ fn memory(s: &State) -> El {
 fn memory_summary(p: &pulse_domain::Process) -> El {
     let optional = |bytes: Option<u64>| bytes.map_or("—".into(), mib);
     [
-        ("Mémoire privée", optional(p.private_bytes.value.get())),
+        (tr("Mémoire privée"), optional(p.private_bytes.value.get())),
         ("Working Set", optional(p.working_set.value.get())),
         (
-            "Handles",
+            tr("Handles"),
             p.handles.value.get().map_or("—".into(), |v| v.to_string()),
         ),
         (
-            "Threads",
+            tr("Fils d’exécution"),
             p.threads.value.get().map_or("—".into(), |v| v.to_string()),
         ),
     ]
@@ -2286,13 +2398,13 @@ fn finding_panel(finding: pulse_insights::Finding) -> El {
     use pulse_insights::Finding;
     match finding {
         Finding::Insufficient => panel(
-            "Données insuffisantes",
-            "MEM-01 v1 · au moins 30 min et 20 points valides sont nécessaires.",
+            tr("Données insuffisantes"),
+            tr("MEM-01 v1 · au moins 30 min et 20 points valides sont nécessaires."),
             "info",
         ),
         Finding::Stable => panel(
-            "Pas de croissance nette",
-            "MEM-01 v1 · résultat limité aux mesures disponibles sur la période.",
+            tr("Pas de croissance nette"),
+            tr("MEM-01 v1 · résultat limité aux mesures disponibles sur la période."),
             "success",
         ),
         Finding::Growth {
@@ -2302,12 +2414,15 @@ fn finding_panel(finding: pulse_insights::Finding) -> El {
             sustained,
         } => panel(
             if sustained {
-                "Fuite potentielle"
+                tr("Fuite potentielle")
             } else {
-                "Croissance observée"
+                tr("Croissance observée")
             },
-            &format!(
-                "MEM-01 v1 · +{delta_mib:.0} Mio sur {:.1} min · pente {slope_mib_hour:.0} Mio/h. Seuils : 256 Mio et 64 Mio/h, sans plateau tardif ni retour significatif. Charge et caches non exclus ; ce signal ne confirme pas une fuite.",
+            &trf!(
+                (
+                    "MEM-01 v1 · +{delta_mib:.0} Mio sur {:.1} min · pente {slope_mib_hour:.0} Mio/h. Seuils : 256 Mio et 64 Mio/h, sans plateau tardif ni retour significatif. Charge et caches non exclus ; ce signal ne confirme pas une fuite.",
+                    "MEM-01 v1 · +{delta_mib:.0} MiB over {:.1} min · slope {slope_mib_hour:.0} MiB/h. Thresholds: 256 MiB and 64 MiB/h, with no late plateau or significant drop. Workload and caches are not ruled out; this signal does not confirm a leak."
+                ),
                 duration_ms as f64 / 60_000.
             ),
             if sustained { "warning" } else { "info" },
@@ -2360,8 +2475,11 @@ fn diagnostics(s: &State) -> El {
         .copied()
         .reduce(f64::max)
         .map_or("—".into(), |v| format!("{v:.1} %"));
-    let averages = format!(
-        "CPU moyen {}   ·   RAM max. {}   ·   GPU moyen {}",
+    let averages = trf!(
+        (
+            "CPU moyen {}   ·   RAM max. {}   ·   GPU moyen {}",
+            "Average CPU {}   ·   Peak RAM {}   ·   Average GPU {}"
+        ),
         mean(&values),
         max_ram,
         mean(&gpu)
@@ -2377,13 +2495,15 @@ fn diagnostics(s: &State) -> El {
     );
     let alert = match finding {
         pulse_insights::CpuLoad::Insufficient => panel(
-            "Charge CPU · données insuffisantes",
-            "CPU-01 · au moins 15 s de mesures valides, sans interruption de plus de 6 s.",
+            tr("Charge CPU · données insuffisantes"),
+            tr("CPU-01 · au moins 15 s de mesures valides, sans interruption de plus de 6 s."),
             "info",
         ),
         pulse_insights::CpuLoad::BelowThreshold => panel(
-            "Aucune charge CPU soutenue détectée",
-            "CPU-01 · seuil de 90 % pendant au moins 15 s. Le résultat ne s’applique qu’aux mesures disponibles.",
+            tr("Aucune charge CPU soutenue détectée"),
+            tr(
+                "CPU-01 · seuil de 90 % pendant au moins 15 s. Le résultat ne s’applique qu’aux mesures disponibles.",
+            ),
             "info",
         ),
         pulse_insights::CpuLoad::Sustained {
@@ -2391,9 +2511,12 @@ fn diagnostics(s: &State) -> El {
             peak_percent,
             count,
         } => panel(
-            "Charge CPU soutenue",
-            &format!(
-                "CPU-01 · au moins 90 % pendant {:.1} s · pic à {peak_percent:.1} % · {count} mesures. Cette règle n’attribue pas la cause à un processus.",
+            tr("Charge CPU soutenue"),
+            &trf!(
+                (
+                    "CPU-01 · au moins 90 % pendant {:.1} s · pic à {peak_percent:.1} % · {count} mesures. Cette règle n’attribue pas la cause à un processus.",
+                    "CPU-01 · at least 90% for {:.1} s · peak {peak_percent:.1}% · {count} samples. This rule does not identify a process as the cause."
+                ),
                 duration_ms as f64 / 1000.
             ),
             "warning",
@@ -2402,9 +2525,9 @@ fn diagnostics(s: &State) -> El {
     let mut tools = row().gap(n("gapSmall")).child(action(
         "session-diagnostics",
         if history {
-            "Afficher le diagnostic CPU"
+            tr("Afficher le diagnostic CPU")
         } else {
-            "Masquer le diagnostic CPU"
+            tr("Masquer le diagnostic CPU")
         },
         !history,
         |s| {
@@ -2416,8 +2539,8 @@ fn diagnostics(s: &State) -> El {
         },
     ));
     if !s.demo && (s.replay || s.history.len() > 1) && count > 0 {
-        tools = tools.child(action("copy-csv","Copier le CSV",false, |_| {})
-            .help("Copie la période visible : dates et métriques agrégées uniquement, sans nom de machine ni processus.")
+        tools = tools.child(action("copy-csv",tr("Copier le CSV"),false, |_| {})
+            .help(tr("Copie la période visible : dates et métriques agrégées uniquement, sans nom de machine ni processus."))
             .on_press_tx(move |s: &mut State, tx| {
                 tx.copy(pulse_history::csv_text(s.history.iter().skip(start).copied()));
             }));
@@ -2426,7 +2549,7 @@ fn diagnostics(s: &State) -> El {
         .gap(n("gap"))
         .child(heading(
             "Sessions",
-            "Enregistre une mesure ou clique sur un pic pour l’explorer.",
+            tr("Enregistre une mesure ou clique sur un pic pour l’explorer."),
         ))
         .child(session_tools(s))
         .child(tools)
@@ -2436,22 +2559,32 @@ fn diagnostics(s: &State) -> El {
                 .gap(n("gapSmall"))
                 .child(periods(s))
                 .child(el().grow(1.))
-                .child(action("back-point", "← Échantillon", false, move |s| {
-                    s.cursor = prev
-                }))
-                .child(action("next-point", "Échantillon →", false, move |s| {
-                    s.cursor = next
-                }))
+                .child(action(
+                    "back-point",
+                    tr("← Échantillon"),
+                    false,
+                    move |s| s.cursor = prev,
+                ))
+                .child(action(
+                    "next-point",
+                    tr("Échantillon →"),
+                    false,
+                    move |s| s.cursor = next,
+                ))
                 .child(action(
                     "return-live",
-                    if s.replay { "Dernier point" } else { "Direct" },
+                    if s.replay {
+                        tr("Dernier point")
+                    } else {
+                        tr("Direct")
+                    },
                     s.cursor.is_none(),
                     |s| s.cursor = None,
                 )),
         )
         .child(chart(
             s,
-            "Chronologie système",
+            tr("Chronologie système"),
             "%",
             100.,
             &[
@@ -2463,10 +2596,13 @@ fn diagnostics(s: &State) -> El {
         .child(
             label(
                 shown.map_or_else(
-                    || "Aucun échantillon.".into(),
+                    || tr("Aucun échantillon.").into(),
                     |p| {
-                        format!(
-                            "Point {} / {} · +{:.1} s   ·   {averages}",
+                        trf!(
+                            (
+                                "Point {} / {} · +{:.1} s   ·   {averages}",
+                                "Sample {} / {} · +{:.1} s   ·   {averages}"
+                            ),
                             index + 1,
                             count,
                             p.elapsed_ms as f64 / 1000.
@@ -2495,9 +2631,11 @@ fn diagnostics(s: &State) -> El {
     {
         layout = layout.child(
             card()
-                .child(label("Empreinte de PULSE", "section", "text"))
-                .child(detail_metric("CPU machine", p.cpu, |v| format!("{v:.1} %")))
-                .child(detail_metric("Mémoire privée", p.private_bytes, mib)),
+                .child(label(tr("Empreinte de PULSE"), "section", "text"))
+                .child(detail_metric(tr("CPU machine"), p.cpu, |v| {
+                    format!("{v:.1} %")
+                }))
+                .child(detail_metric(tr("Mémoire privée"), p.private_bytes, mib)),
         );
     }
     layout
@@ -2506,18 +2644,20 @@ fn diagnostics(s: &State) -> El {
 fn contributors_panel(s: &State, time: Option<u64>) -> El {
     let Some(at) = time else {
         return panel(
-            "Processus à cet instant",
-            "Sélectionnez un point pour voir ses mesures par processus.",
+            tr("Processus à cet instant"),
+            tr("Sélectionnez un point pour voir ses mesures par processus."),
             "info",
         );
     };
     let Some(snapshot) = s.contributor_history.iter().find(|p| p.elapsed_ms == at) else {
         return panel(
-            "Processus à cet instant",
+            tr("Processus à cet instant"),
             if s.replay {
-                "Aucun détail n’a été enregistré pour ce point. Pour un prochain enregistrement, activez « Inclure les processus »."
+                tr(
+                    "Aucun détail n’a été enregistré pour ce point. Pour un prochain enregistrement, activez « Inclure les processus ».",
+                )
             } else {
-                "Aucun détail de processus n’est disponible pour cet échantillon."
+                tr("Aucun détail de processus n’est disponible pour cet échantillon.")
             },
             "info",
         );
@@ -2549,20 +2689,20 @@ fn contributors_panel(s: &State, time: Option<u64>) -> El {
     let header = row()
         .center_y()
         .gap(n("gapSmall"))
-        .child(label("Processus à cet instant", "section", "text").grow(1.))
+        .child(label(tr("Processus à cet instant"), "section", "text").grow(1.))
         .child(action("contributors-cpu", "CPU", !memory, |s| {
             s.contributors_by_memory = false
         }))
         .child(action(
             "contributors-memory",
-            "Mémoire privée",
+            tr("Mémoire privée"),
             memory,
             |s| s.contributors_by_memory = true,
         ));
     let mut ui = card().key("contributors").child(header);
     if rows.is_empty() {
         ui = ui.child(label(
-            "Aucune mesure disponible pour ce classement.",
+            tr("Aucune mesure disponible pour ce classement."),
             "body",
             "muted",
         ));
@@ -2582,10 +2722,10 @@ fn contributors_panel(s: &State, time: Option<u64>) -> El {
                 .child(label(&p.name, "body", "text").min_w(0.).truncate().grow(1.))
                 .child(label(format!("PID {}", p.key.pid), "small", "muted").w(90.))
                 .child(label(format!("CPU {cpu}"), "small", "text").w(105.))
-                .child(label(format!("Privée {ram}"), "small", "text").w(155.)),
+                .child(label(trf!(("Privée {ram}", "Private {ram}")), "small", "text").w(155.)),
         );
     }
-    ui.child(label("Classement des mesures disponibles. La présence d’un processus à cet instant n’établit pas la cause du pic.","small","muted").wrap())
+    ui.child(label(tr("Classement des mesures disponibles. La présence d’un processus à cet instant n’établit pas la cause du pic."),"small","muted").wrap())
 }
 
 fn session_tools(s: &State) -> El {
@@ -2595,42 +2735,42 @@ fn session_tools(s: &State) -> El {
         return el().h(0.);
     }
     let status = if s.session_busy {
-        "Traitement de la session…"
+        tr("Traitement de la session…")
     } else if s.recording {
-        "Enregistrement en cours · rétention selon la session"
+        tr("Enregistrement en cours · rétention selon la session")
     } else if s.replay {
-        "Lecture seule · aucune collecte pendant la relecture"
+        tr("Lecture seule · aucune collecte pendant la relecture")
     } else {
-        "L’enregistrement est manuel. Les adresses et chemins ne sont pas stockés."
+        tr("L’enregistrement est manuel. Les adresses et chemins ne sont pas stockés.")
     };
     let mut buttons = row().gap(n("gapSmall")).center_y();
     if !s.session_busy {
         if s.recording {
-            buttons = buttons.child(action("session-stop", "Arrêter", true, |s| {
+            buttons = buttons.child(action("session-stop", tr("Arrêter"), true, |s| {
                 s.request_session(SessionCommand::Stop)
             }));
         } else {
             if s.can_return_live() {
                 buttons = buttons.child(action(
                     "session-live",
-                    "Revenir au direct",
+                    tr("Revenir au direct"),
                     true,
                     State::return_live,
                 ));
             } else if !s.replay {
                 buttons = buttons.child(
-                    action("session-start", "Enregistrer…", true, |_| {})
+                    action("session-start", tr("Enregistrer…"), true, |_| {})
                         .on_press_tx(|s: &mut State, tx| {
                             if s.session_busy {
                                 return;
                             }
                             tx.save_file(
                                 FileDialogOptions {
-                                    title: "Enregistrer une session PULSE".into(),
+                                    title: s.localized("Enregistrer une session PULSE").into(),
                                     file_name: Some("session-pulse.sqlite".into()),
                                     ..Default::default()
                                 }
-                                .filter("Session PULSE", &["sqlite"]),
+                                .filter(s.localized("Session PULSE"), &["sqlite"]),
                                 |s: &mut State, result, _| match result {
                                     Ok(Some(path)) => s.request_session(SessionCommand::Start {
                                         path,
@@ -2645,25 +2785,27 @@ fn session_tools(s: &State) -> El {
                                 },
                             );
                         })
-                        .help("Créer un nouveau fichier, avec rétention de 3 600 points."),
+                        .help(tr(
+                            "Créer un nouveau fichier, avec rétention de 3 600 points.",
+                        )),
                 );
             }
             if !s.replay {
-                buttons=buttons.child(action("session-processes","Inclure les processus",s.include_processes,|s|s.include_processes = !s.include_processes)
-                    .help("Active le stockage local des noms et identités des principaux processus. Ces champs ne sont pas exportés dans le CSV."));
+                buttons=buttons.child(action("session-processes",tr("Inclure les processus"),s.include_processes,|s|s.include_processes = !s.include_processes)
+                    .help(tr("Active le stockage local des noms et identités des principaux processus. Ces champs ne sont pas exportés dans le CSV.")));
             }
             buttons = buttons.child(
-                action("session-open", "Ouvrir une session…", false, |_| {}).on_press_tx(
+                action("session-open", tr("Ouvrir une session…"), false, |_| {}).on_press_tx(
                     |s: &mut State, tx| {
                         if s.session_busy {
                             return;
                         }
                         tx.open_file(
                             FileDialogOptions {
-                                title: "Ouvrir une session PULSE".into(),
+                                title: s.localized("Ouvrir une session PULSE").into(),
                                 ..Default::default()
                             }
-                            .filter("Session PULSE", &["sqlite", "db"]),
+                            .filter(s.localized("Session PULSE"), &["sqlite", "db"]),
                             |s: &mut State, result, _| match result {
                                 Ok(Some(path)) => s.request_session(SessionCommand::Open(path)),
                                 Ok(None) => {}
@@ -2680,11 +2822,11 @@ fn session_tools(s: &State) -> El {
     }
     card()
         .gap(n("gapSmall"))
-        .child(label("Sessions locales", "section", "text"))
+        .child(label(tr("Sessions locales"), "section", "text"))
         .child(label(status, "small", "muted").wrap())
         .child(buttons)
         .child(if let Some(message) = &s.recording_status {
-            label(message, "small", "text").wrap()
+            label(translate_message(message), "small", "text").wrap()
         } else {
             el().h(0.)
         })
@@ -2694,20 +2836,20 @@ fn gaming(s: &State) -> El {
     use pulse_gaming::Request;
     let g = &s.gaming;
     let panel_base = col().gap(n("gap")).child(heading(
-        "Jeux",
-        "Mesurez la fluidité de votre jeu : FPS, 1 % low et temps entre les images.",
+        tr("Jeux"),
+        tr("Mesurez la fluidité de votre jeu : FPS, 1 % low et temps entre les images."),
     ));
     if g.commands.is_none() || s.replay {
         return panel_base.child(panel(
-            "Capture non disponible dans cette vue",
-            "Revenez au direct pour utiliser PresentMon ou importer un CSV.",
+            tr("Capture non disponible dans cette vue"),
+            tr("Revenez au direct pour utiliser PresentMon ou importer un CSV."),
             "info",
         ));
     }
     if s.session_busy {
         return panel_base.child(panel(
-            "Session en cours de traitement",
-            "Attendez la fin de l’opération pour utiliser PresentMon.",
+            tr("Session en cours de traitement"),
+            tr("Attendez la fin de l’opération pour utiliser PresentMon."),
             "info",
         ));
     }
@@ -2719,13 +2861,13 @@ fn gaming(s: &State) -> El {
             .then(|| (*key, name.clone()))
     });
     let tool = |text, primary| {
-        action("gaming-tool", text, primary, |_| {}).on_press_tx(|_: &mut State, tx| {
+        action("gaming-tool", text, primary, |_| {}).on_press_tx(|s: &mut State, tx| {
             tx.open_file(
                 rune::FileDialogOptions {
-                    title: "Choisir le CLI officiel PresentMon".into(),
+                    title: s.localized("Choisir le CLI officiel PresentMon").into(),
                     ..Default::default()
                 }
-                .filter("Exécutable Windows", &["exe"]),
+                .filter(s.localized("Exécutable Windows"), &["exe"]),
                 |s: &mut State, result, _| match result {
                     Ok(Some(path)) => {
                         s.gaming.executable = Some(path);
@@ -2754,9 +2896,9 @@ fn gaming(s: &State) -> El {
         .map_or_else(
             || {
                 if g.bundled_presentmon {
-                    "PresentMon 2.3.1 intégré".into()
+                    tr("PresentMon 2.3.1 intégré").into()
                 } else {
-                    "Non configuré".into()
+                    tr("Non configuré").into()
                 }
             },
             |name| name.to_string_lossy().into_owned(),
@@ -2766,18 +2908,25 @@ fn gaming(s: &State) -> El {
             .center_y()
             .gap(n("gapSmall"))
             .child(glyph("game", "primary"))
-            .child(label("Capture automatique", "section", "text")),
+            .child(label(tr("Capture automatique"), "section", "text")),
     );
     if g.busy {
-        settings = settings.child(row().child(action("gaming-cancel", "Annuler", false, |s| {
-            s.gaming.stop()
-        })));
+        settings = settings.child(row().child(action(
+            "gaming-cancel",
+            tr("Annuler"),
+            false,
+            |s| s.gaming.stop(),
+        )));
     } else if g.bundled_presentmon || g.executable.is_some() {
-        settings=settings.child(label("Démarrez la capture, puis retournez directement dans le jeu. Les images hors premier plan ne comptent pas.","body","muted").wrap());
+        settings=settings.child(label(tr("Démarrez la capture, puis retournez directement dans le jeu. Les images hors premier plan ne comptent pas."),"body","muted").wrap());
         if s.paused {
-            settings = settings.child(label("Reprenez le direct pour capturer.", "body", "text"));
+            settings = settings.child(label(
+                tr("Reprenez le direct pour capturer."),
+                "body",
+                "text",
+            ));
         } else {
-            let button = action("gaming-auto", "Capturer en auto", true, move |s| {
+            let button = action("gaming-auto", tr("Capturer en auto"), true, move |s| {
                 s.gaming.request(Request::Auto {
                     executable: s.gaming.executable.clone(),
                     seconds: s.gaming.seconds,
@@ -2792,18 +2941,18 @@ fn gaming(s: &State) -> El {
             );
         }
     } else {
-        settings=settings.child(label("Build de développement sans PresentMon intégré. Choisissez le CLI officiel 2.3.1 x64.","body","muted").wrap())
-            .child(row().child(tool("Configurer PresentMon…",true)));
+        settings=settings.child(label(tr("Build de développement sans PresentMon intégré. Choisissez le CLI officiel 2.3.1 x64."),"body","muted").wrap())
+            .child(row().child(tool(tr("Configurer PresentMon…"),true)));
     }
     if let Some(status) = &g.status {
-        settings = settings.child(label(status, "body", "text").wrap());
+        settings = settings.child(label(translate_message(status), "body", "text").wrap());
     }
     let mut view = panel_base.child(settings);
     if let Some(report) = &g.report {
         if report.foreground_only {
             view = view.child(
                 label(
-                    "Capture auto · intervalles au premier plan uniquement.",
+                    tr("Capture auto · intervalles au premier plan uniquement."),
                     "small",
                     "muted",
                 )
@@ -2815,19 +2964,19 @@ fn gaming(s: &State) -> El {
     if !g.busy {
         let mut options = card()
             .key("gaming-options")
-            .child(label("Autres options", "section", "text"))
+            .child(label(tr("Autres options"), "section", "text"))
             .child(
                 row()
                     .gap(n("gapSmall"))
                     .child(
-                        action("gaming-import", "Importer un CSV…", false, |_| {}).on_press_tx(
-                            |_: &mut State, tx| {
+                        action("gaming-import", tr("Importer un CSV…"), false, |_| {}).on_press_tx(
+                            |s: &mut State, tx| {
                                 tx.open_file(
                                     rune::FileDialogOptions {
-                                        title: "Importer un CSV PresentMon".into(),
+                                        title: s.localized("Importer un CSV PresentMon").into(),
                                         ..Default::default()
                                     }
-                                    .filter("CSV PresentMon", &["csv"]),
+                                    .filter(s.localized("CSV PresentMon"), &["csv"]),
                                     |s: &mut State, result, _| match result {
                                         Ok(Some(path)) => s.gaming.request(Request::Import(path)),
                                         Ok(None) => {}
@@ -2839,7 +2988,7 @@ fn gaming(s: &State) -> El {
                     )
                     .child(action(
                         "gaming-target",
-                        "Choisir un processus",
+                        tr("Choisir un processus"),
                         false,
                         |s| s.navigate(Page::Processes),
                     )),
@@ -2849,12 +2998,12 @@ fn gaming(s: &State) -> El {
                 row()
                     .center_y()
                     .gap(n("gapSmall"))
-                    .child(tool("Choisir un autre CLI…", false))
+                    .child(tool(tr("Choisir un autre CLI…"), false))
                     .child(label(&executable, "small", "muted").truncate())
                     .child(if g.bundled_presentmon && g.executable.is_some() {
                         action(
                             "gaming-default-cli",
-                            "Utiliser le CLI intégré",
+                            tr("Utiliser le CLI intégré"),
                             false,
                             |s| s.gaming.executable = None,
                         )
@@ -2871,7 +3020,7 @@ fn gaming(s: &State) -> El {
                         .gap(n("gapSmall"))
                         .child(action(
                             "gaming-start",
-                            "Capturer la cible",
+                            tr("Capturer la cible"),
                             false,
                             move |s| {
                                 s.gaming.request(Request::Capture {
@@ -2922,13 +3071,13 @@ fn gaming_report(r: &pulse_gaming::Report) -> El {
         ))
     });
     let metrics = [
-        ("FPS moyens", format!("{:.1}", r.fps)),
+        (tr("FPS moyens"), format!("{:.1}", r.fps)),
         (
             "1 % low",
             r.low_one.map_or("—".into(), |v| format!("{v:.1} FPS")),
         ),
-        ("Frametime P99", format!("{:.2} ms", r.p99_ms)),
-        ("Intervalles", r.intervals.to_string()),
+        (tr("Frametime P99"), format!("{:.2} ms", r.p99_ms)),
+        (tr("Intervalles"), r.intervals.to_string()),
     ]
     .into_iter()
     .fold(row().gap(n("gapSmall")), |ui, (label_text, value)| {
@@ -2940,38 +3089,42 @@ fn gaming_report(r: &pulse_gaming::Report) -> El {
                 .child(label(value, "value", "text")),
         )
     });
-    col().key("gaming-report").gap(n("gap")).child(heading(&format!("{} · PID {}",r.name,r.pid),r.metric.label()))
+    col().key("gaming-report").gap(n("gap")).child(heading(&format!("{} · PID {}",r.name,r.pid),tr(r.metric.label())))
         .child(metrics)
-        .child(card().child(label("Frametimes","section","text"))
+        .child(card().child(label(tr("Temps entre les images"),"section","text"))
             .child(row().gap(n("gapSmall")).child(axis).child(canvas(sh.view_box(1000.,200.)).h(220.).grow(1.)))
             .child(row().justify_between().child(label("0 s","small","muted"))
-                .child(label(format!("{:.1} s d’intervalles mesurés",r.total_ms/1000.),"small","muted"))))
-        .child(panel("Lecture des résultats",&format!("Chaîne de présentation 0x{:X} · {} flux détecté(s), non mélangés. Le 1 % low est l’inverse de la durée moyenne des 1 % d’intervalles les plus lents (100 intervalles minimum). Le graphique conserve le maximum par bloc.",r.swapchain,r.streams),"info"))
+                .child(label(trf!(("{:.1} s d’intervalles mesurés", "{:.1} s of measured intervals"),r.total_ms/1000.),"small","muted"))))
+        .child(panel(tr("Lecture des résultats"),&trf!(("Chaîne de présentation 0x{:X} · {} flux détecté(s), non mélangés. Le 1 % low est l’inverse de la durée moyenne des 1 % d’intervalles les plus lents (100 intervalles minimum). Le graphique conserve le maximum par bloc.", "Swap chain 0x{:X} · {} stream(s) detected, not combined. The 1% low is the reciprocal of the average duration of the slowest 1% of intervals (at least 100 intervals required). The chart shows the peak in each bucket."),r.swapchain,r.streams),"info"))
 }
 
 pub fn view(s: &State, cx: &mut Cx<State>) -> El {
+    with_language(s.language(), || localized_view(s, cx))
+}
+
+fn localized_view(s: &State, cx: &mut Cx<State>) -> El {
     let mode = if s.replay {
-        "Relecture — session SQLite"
+        tr("Relecture — session SQLite")
     } else if s.demo {
-        "Démo — données simulées"
+        tr("Démo — données simulées")
     } else if s.paused {
-        "En pause"
+        tr("En pause")
     } else if s.snapshot.utc_ms == 0 {
-        "Connexion aux compteurs"
+        tr("Connexion aux compteurs")
     } else {
-        "En direct"
+        tr("En direct")
     };
     let width = cx.layout_size("shell").map_or(1440., |[w, _]| w);
     let search = if s.page == Page::Processes {
         TextInput::new(&s.query)
-            .placeholder("Rechercher un processus ou PID…")
+            .placeholder(tr("Rechercher un processus ou PID…"))
             .on_edit(|s: &mut State| &mut s.query)
             .on_change(|s: &mut State, _| s.project())
             .build(&kit())
             .key("search")
     } else {
         TextInput::new(&s.global_query)
-            .placeholder("Rechercher un processus ou PID…")
+            .placeholder(tr("Rechercher un processus ou PID…"))
             .on_edit(|s: &mut State| &mut s.global_query)
             .on_submit(|s: &mut State, tx| {
                 s.query = rune::TextEdit::new(s.global_query.text.clone());
@@ -3003,7 +3156,15 @@ pub fn view(s: &State, cx: &mut Cx<State>) -> El {
         } else {
             search.max_w(if width < 880. { 250. } else { 390. })
         })
-        .child(el().grow(1.));
+        .child(el().grow(1.))
+        .child(action(
+            "language-toggle",
+            tr("Langue / Language"),
+            s.language_picker,
+            |s| {
+                s.language_picker = !s.language_picker;
+            },
+        ));
     let mut status_bar = row()
         .h(34.)
         .px(n("gap"))
@@ -3029,12 +3190,19 @@ pub fn view(s: &State, cx: &mut Cx<State>) -> El {
         )
         .child(el().grow(1.));
     if s.recording {
-        status_bar = status_bar.child(label("● Enregistrement", "small", "danger"));
+        status_bar = status_bar.child(label(tr("● Enregistrement"), "small", "danger"));
+    }
+    if s.language_save_failed {
+        status_bar = status_bar.child(
+            label(tr("Langue non enregistrée"), "small", "warning").help(tr(
+                "La langue a changé, mais la préférence n’a pas pu être enregistrée.",
+            )),
+        );
     }
     if s.replay && s.page != Page::History && s.can_return_live() {
         status_bar = status_bar.child(action(
             "status-return-live",
-            "Revenir au direct",
+            tr("Revenir au direct"),
             true,
             State::return_live,
         ));
@@ -3042,7 +3210,7 @@ pub fn view(s: &State, cx: &mut Cx<State>) -> El {
     if !s.replay {
         status_bar = status_bar.child(action(
             "pause",
-            if s.paused { "Reprendre" } else { "Pause" },
+            if s.paused { tr("Reprendre") } else { "Pause" },
             s.paused,
             |s| s.paused = !s.paused,
         ));
@@ -3064,14 +3232,14 @@ pub fn view(s: &State, cx: &mut Cx<State>) -> El {
             Page::Memory => col()
                 .gap(n("gap"))
                 .child(
-                    row().child(action("memory-back", "← Processus", false, |s| {
+                    row().child(action("memory-back", tr("← Processus"), false, |s| {
                         s.navigate(Page::Processes);
                         s.tab = 1;
                     })),
                 )
                 .child(heading(
-                    "Suivi mémoire",
-                    "Observe l’évolution de la mémoire d’un seul processus.",
+                    tr("Suivi mémoire"),
+                    tr("Observe l’évolution de la mémoire d’un seul processus."),
                 ))
                 .child(memory(s)),
             Page::Diagnostics | Page::History => diagnostics(s),
@@ -3094,24 +3262,69 @@ pub fn view(s: &State, cx: &mut Cx<State>) -> El {
         .child(top)
         .child(row().grow(1.).min_h(0.).child(navigation(s)).child(content))
         .child(status_bar);
-    if let Some((command, name)) = &s.confirmation {
+    if s.language_picker {
+        let title = tr("Langue de l’interface");
+        let panel = [
+            ("system", tr("Système"), LanguagePreference::System),
+            ("fr", "Français", LanguagePreference::French),
+            ("en", "English", LanguagePreference::English),
+        ]
+        .into_iter()
+        .fold(
+            card()
+                .w(340.)
+                .role("dialog")
+                .label(title)
+                .child(label(title, "section", "text")),
+            |panel, (id, text, preference)| {
+                panel.child(action(
+                    &format!("language-{id}"),
+                    text,
+                    s.language_preference == preference,
+                    move |s| {
+                        s.language_preference = preference;
+                        s.language_save_failed =
+                            s.save_language.is_some_and(|save| !save(preference));
+                        s.language_picker = false;
+                    },
+                ))
+            },
+        )
+        .child(action("language-close", tr("Fermer"), false, |s| {
+            s.language_picker = false
+        }));
+        col().w_full().h_full().child(shell).child(
+            col()
+                .w_full()
+                .h_full()
+                .center()
+                .absolute(0., 0.)
+                .fill(c("scrim").alpha(0.70))
+                .modal(false, |s: &mut State| s.language_picker = false)
+                .child(panel),
+        )
+    } else if let Some((command, name)) = &s.confirmation {
         let pid = command.key.pid;
         let (title, body, confirm, ink) = match command.change {
             pulse_actions::Change::Terminate => (
-                "Confirmer la terminaison",
-                format!(
-                    "Terminer {name} (PID {pid}) ? Les données non enregistrées pourraient être perdues."
-                ),
-                "Terminer ce processus",
+                tr("Confirmer la terminaison"),
+                trf!((
+                    "Terminer {name} (PID {pid}) ? Les données non enregistrées pourraient être perdues.",
+                    "End {name} (PID {pid})? Unsaved data may be lost."
+                )),
+                tr("Terminer ce processus"),
                 "danger",
             ),
             pulse_actions::Change::SetPriority(target) => (
-                "Confirmer la priorité",
-                format!(
-                    "Appliquer la priorité « {} » à {name} (PID {pid}) ? Windows peut refuser cette demande.",
-                    target.priority().label()
+                tr("Confirmer la priorité"),
+                trf!(
+                    (
+                        "Appliquer la priorité « {} » à {name} (PID {pid}) ? Windows peut refuser cette demande.",
+                        "Apply {} priority to {name} (PID {pid})? Windows may deny the request."
+                    ),
+                    tr(target.priority().label())
                 ),
-                "Appliquer la priorité",
+                tr("Appliquer la priorité"),
                 "primary",
             ),
         };
@@ -3132,7 +3345,7 @@ pub fn view(s: &State, cx: &mut Cx<State>) -> El {
                     .child(
                         row()
                             .gap(n("gapSmall"))
-                            .child(action("cancel-terminate", "Annuler", false, |s| {
+                            .child(action("cancel-terminate", tr("Annuler"), false, |s| {
                                 s.confirmation = None
                             }))
                             .child(
@@ -3153,12 +3366,12 @@ pub fn view(s: &State, cx: &mut Cx<State>) -> El {
         let panel = card()
             .w(380.)
             .role("dialog")
-            .label("Modifier la priorité")
-            .child(label("Modifier la priorité", "section", "text"))
+            .label(tr("Modifier la priorité"))
+            .child(label(tr("Modifier la priorité"), "section", "text"))
             .child(label(format!("{name} · PID {}", key.pid), "body", "muted").truncate())
             .child(
                 label(
-                    "La haute priorité et le temps réel ne sont pas proposés.",
+                    tr("La haute priorité et le temps réel ne sont pas proposés."),
                     "small",
                     "muted",
                 )
@@ -3174,7 +3387,7 @@ pub fn view(s: &State, cx: &mut Cx<State>) -> El {
         .fold(panel, |p, (id, target)| {
             p.child(action(
                 &format!("priority-{id}"),
-                target.priority().label(),
+                tr(target.priority().label()),
                 current == Some(target.priority()),
                 move |s| {
                     if let Some((key, name)) = s.priority_picker.take() {
@@ -3189,7 +3402,7 @@ pub fn view(s: &State, cx: &mut Cx<State>) -> El {
                 },
             ))
         })
-        .child(action("cancel-priority", "Annuler", false, |s| {
+        .child(action("cancel-priority", tr("Annuler"), false, |s| {
             s.priority_picker = None
         }));
         col().w_full().h_full().child(shell).child(

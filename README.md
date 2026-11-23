@@ -6,7 +6,9 @@ PULSE opens directly to the live process table, without a console. Sort or filte
 
 ![PULSE process table and live inspector](assets/captures/pulse-processes.png)
 
-> The screenshots use simulated data. The portable executable starts with real measurements. The app UI is currently in French.
+> The screenshots use simulated data. The portable executable starts with real measurements.
+
+**Interface language:** Use **Language / Langue** in the top bar to switch between **System**, **Français**, and **English** without restarting. System mode follows the Windows display language (English for unsupported languages). Your choice is saved locally; process and device names are left unchanged.
 
 ## Screenshots
 
@@ -60,7 +62,7 @@ The packaging script verifies and embeds the official [PresentMon 2.3.1 x64 CLI]
 - **Processes:** Search by name or PID, sort columns, switch to a verified parent/child tree, and inspect up to a minute of CPU, private memory and GPU readings after selecting a process. Termination and priority changes require confirmation. PULSE does not offer high or real-time priority and does not elevate itself.
 - **Hardware:** See logical CPU activity and Windows-reported frequencies. NVIDIA NVML provides adapter readings where supported; Windows WDDM provides per-process GPU engine activity and video memory independently of NVML. GPU activity is the busiest measured engine, not the sum of all engines. For CPU temperature, enable **Shared Memory Support** and keep sensors active in HWiNFO; PULSE reads the shared sensor data, not NZXT CAM.
 - **Storage and network:** Inspect physical drives, volume space, per-drive throughput and latency, and supported SMART/NVMe readings. Inspect local TCP/UDP endpoints on demand, without DNS lookups or storing addresses. Unsupported or unreported readings are shown as unavailable, not zero.
-- **Gaming:** In **Jeux**, choose 15, 30 or 60 seconds and click **Capturer en auto**, then return to the game within 45 seconds. Capture targets the eligible foreground process; time spent out of focus is excluded without extending the capture. Reports include displayed FPS when PresentMon can measure it, a 1% low, P99 and a frametime chart. Presentation or application cadence is labeled separately. Live capture depends on Windows ETW permissions; importing a PresentMon CSV is an alternative. Reports remain in memory.
+- **Gaming:** In **Gaming**, choose 15, 30 or 60 seconds and click **Start auto capture**, then return to the game within 45 seconds. Capture targets the eligible foreground process; time spent out of focus is excluded without extending the capture. Reports include displayed FPS when PresentMon can measure it, a 1% low, P99 and a frametime chart. Presentation or application cadence is labeled separately. Live capture depends on Windows ETW permissions; importing a PresentMon CSV is an alternative. Reports remain in memory.
 - **Sessions:** Record or reopen SQLite sessions, inspect historical spikes and their top CPU/memory contributors, and export aggregate CSV. Recording contributors is optional; names and PIDs are not included in CSV. Memory growth is a reason to investigate, not proof of a leak. The sustained CPU diagnostic does not assign a cause to a process.
 
 ## Sessions from the command line

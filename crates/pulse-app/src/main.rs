@@ -1,4 +1,5 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+mod language;
 
 use std::{
     path::PathBuf,
@@ -23,9 +24,13 @@ impl Drop for GamingWorker {
 
 fn main() {
     if let Err(e) = run() {
-        eprintln!("PULSE : {e}");
-        #[cfg(all(windows, not(debug_assertions)))]
-        pulse_platform_windows::show_startup_error(&e.to_string());
+        pulse_ui::with_language(language::load().resolve(language::system()), || {
+            let detail = e.to_string();
+            let message = pulse_ui::translate_message(&detail);
+            eprintln!("PULSE: {message}");
+            #[cfg(all(windows, not(debug_assertions)))]
+            pulse_platform_windows::show_startup_error(&message);
+        });
         std::process::exit(1);
     }
 }
@@ -64,6 +69,15 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 export = Some(PathBuf::from(
                     input.next().ok_or("Chemin manquant après --export-csv")?,
                 ))
+            }
+            #[cfg(debug_assertions)]
+            "--snap-language" => {
+                args.push(arg);
+                args.push(
+                    input
+                        .next()
+                        .ok_or("Missing language after --snap-language")?,
+                );
             }
             _ => args.push(arg),
         }
@@ -148,6 +162,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         let mut state = system_state();
         #[cfg(not(windows))]
         let mut state = State::replay(points.unwrap());
+        state.system_language = language::system();
+        state.language_preference = language::load();
+        state.save_language = Some(language::save);
         state.inbox = native.then_some(inbox);
         state.command = native.then_some(commands);
         state.replies = native.then_some(replies);
@@ -363,8 +380,19 @@ fn system_state() -> State {
 }
 
 #[cfg(debug_assertions)]
-fn capture(args: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
-    use pulse_ui::Page;
+fn capture(mut args: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
+    use pulse_ui::{LanguagePreference, Page};
+    let preference = if let Some(index) = args.iter().position(|arg| arg == "--snap-language") {
+        let value = args.remove(index + 1);
+        args.remove(index);
+        match value.as_str() {
+            "fr" => LanguagePreference::French,
+            "en" => LanguagePreference::English,
+            _ => return Err("--snap-language accepts fr or en".into()),
+        }
+    } else {
+        LanguagePreference::French
+    };
     let mut spec = AppSpec::new("PULSE", (1440., 900.), State::demo, pulse_ui::view);
     spec.scenes = &[
         ("overview", |_| {}),
@@ -490,7 +518,14 @@ fn capture(args: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
             s.publish(std::sync::Arc::new(snap));
         }),
     ];
-    App::new(spec).args(args).try_run()?;
+    App::new(spec)
+        .args(args)
+        .init(move || {
+            let mut state = State::demo();
+            state.language_preference = preference;
+            state
+        })
+        .try_run()?;
     Ok(())
 }
 

@@ -1,5 +1,6 @@
 use super::{action, c, filled_segment, format_sample, glyph, label, material_nav, provenance};
 use crate::State;
+use crate::i18n::{tr, trf};
 use pulse_domain::{Availability, GpuAdapter, Sample, Unit};
 use rune::{El, LineCap, Shape, canvas, col, el, row};
 
@@ -16,12 +17,15 @@ pub fn view(s: &State, width: f32) -> El {
         .map_or_else(|| "—".into(), display_duration);
     let duration = snap.elapsed_ms;
     let context = if s.replay {
-        "Lecture seule · seuls les agrégats enregistrés sont disponibles.".into()
+        tr("Lecture seule · seuls les agrégats enregistrés sont disponibles.").into()
     } else if s.paused {
-        "Mesures figées · affichage en pause".into()
+        tr("Mesures figées · affichage en pause").into()
     } else {
-        format!(
-            "PC allumé depuis {uptime}  ·  PULSE observe depuis {}",
+        trf!(
+            (
+                "PC allumé depuis {uptime}  ·  PULSE observe depuis {}",
+                "PC uptime: {uptime}  ·  PULSE monitoring for {}"
+            ),
             display_duration(duration)
         )
     };
@@ -33,20 +37,20 @@ pub fn view(s: &State, width: f32) -> El {
         .map_or_else(|| "—".into(), |mhz| format!("{mhz:.0} MHz"));
     let cpu = tile(
         "monitor-cpu",
-        "Processeur",
+        tr("Processeur"),
         "diagnostic",
         "cpu",
         format_sample(snap.cpu),
     )
     .help(provenance(&snap.cpu))
     .child(trend(s, false, 0, "cpu", Some(100.)))
-    .child(reading("Fréquence reportée max.", cpu_max).help(
+    .child(reading(tr("Fréquence reportée max."), cpu_max).help(tr(
         "Maximum des fréquences exposées par Windows ; ce n’est pas une fréquence effective.",
-    ))
+    )))
     .child(cpu_temperature(s));
     let ram = tile(
         "monitor-ram",
-        "Mémoire vive",
+        tr("Mémoire vive"),
         "memory",
         "memory",
         format_sample(snap.ram),
@@ -54,74 +58,94 @@ pub fn view(s: &State, width: f32) -> El {
     .help(provenance(&snap.ram))
     .child(trend(s, false, 1, "memory", Some(100.)))
     .child(reading(
-        "Utilisée / totale",
+        tr("Utilisée / totale"),
         snap.monitor.ram_bytes.get().map_or_else(
             || "—".into(),
-            |[used, total]| format!("{:.1} / {:.1} Gio", gib(used as f64), gib(total as f64)),
+            |[used, total]| {
+                trf!(
+                    ("{:.1} / {:.1} Gio", "{:.1} / {:.1} GiB"),
+                    gib(used as f64),
+                    gib(total as f64)
+                )
+            },
         ),
     ))
     .child(reading(
-        "Disponible",
+        tr("Disponible"),
         snap.monitor.ram_bytes.get().map_or_else(
             || "—".into(),
-            |[used, total]| format!("{:.1} Gio", gib(total.saturating_sub(used) as f64)),
+            |[used, total]| {
+                trf!(
+                    ("{:.1} Gio", "{:.1} GiB"),
+                    gib(total.saturating_sub(used) as f64)
+                )
+            },
         ),
     ));
     let gpu = tile(
         "monitor-gpu",
-        "Carte graphique",
+        tr("Carte graphique"),
         "gpu",
         "gpu",
         format_sample(adapter.map_or(snap.gpu, |a| a.utilization)),
     )
-    .child(reading("Température", gpu_read(adapter, |a| a.temperature)))
-    .child(reading("Puissance", gpu_read(adapter, |a| a.power)))
-    .child(reading("Fréquence", gpu_read(adapter, |a| a.clock)))
-    .child(reading("Ventilateur", gpu_read(adapter, |a| a.fan)));
+    .child(reading(
+        tr("Température"),
+        gpu_read(adapter, |a| a.temperature),
+    ))
+    .child(reading(tr("Puissance"), gpu_read(adapter, |a| a.power)))
+    .child(reading(tr("Fréquence"), gpu_read(adapter, |a| a.clock)))
+    .child(reading(tr("Ventilateur"), gpu_read(adapter, |a| a.fan)));
     let vram_pair = adapter
         .and_then(|a| a.vram_used.value.get().zip(a.vram_total.value.get()))
         .filter(|&(used, total)| total > 0. && used <= total);
     let vram_percent = vram_pair.map(|(used, total)| used / total * 100.);
     let mut vram = tile(
         "monitor-vram",
-        "Mémoire vidéo",
+        tr("Mémoire vidéo"),
         "memory",
         "vram",
         vram_percent.map_or_else(|| "—".into(), |p| format!("{p:.1} %")),
     )
     .child(bar(vram_percent, "vram"))
     .child(reading(
-        "Utilisée / totale",
+        tr("Utilisée / totale"),
         vram_pair.map_or_else(
             || "—".into(),
-            |(used, total)| format!("{:.1} / {:.1} Gio", gib(used), gib(total)),
+            |(used, total)| {
+                trf!(
+                    ("{:.1} / {:.1} Gio", "{:.1} / {:.1} GiB"),
+                    gib(used),
+                    gib(total)
+                )
+            },
         ),
     ))
     .child(reading(
-        "Libre",
+        tr("Libre"),
         vram_pair.map_or_else(
             || "—".into(),
-            |(used, total)| format!("{:.1} Gio", gib(total - used)),
+            |(used, total)| trf!(("{:.1} Gio", "{:.1} GiB"), gib(total - used)),
         ),
     ));
     if adapter.is_none() && !s.replay {
-        vram=vram.child(label("Capteurs NVML indisponibles", "small","muted").wrap()
-            .help("La capacité, la VRAM et les capteurs agrégés nécessitent actuellement un adaptateur NVIDIA exposé par NVML. L’onglet GPU par processus utilise WDDM."));
+        vram=vram.child(label(tr("Capteurs NVML indisponibles"), "small","muted").wrap()
+            .help(tr("La capacité, la VRAM et les capteurs agrégés nécessitent actuellement un adaptateur NVIDIA exposé par NVML. L’onglet GPU par processus utilise WDDM.")));
     }
     let [read, write] = snap.monitor.disk_rates.map(rate);
     let disk = tile(
         "monitor-disk",
-        "Disques physiques",
+        tr("Disques physiques"),
         "io",
         "disk",
         format_sample(snap.disk),
     )
     .help(provenance(&snap.disk))
     .child(trend(s, true, 0, "disk", None))
-    .child(reading("Lecture", read))
-    .child(reading("Écriture", write))
+    .child(reading(tr("Lecture"), read))
+    .child(reading(tr("Écriture"), write))
     .child(reading(
-        "Latence lecture / écriture",
+        tr("Latence lecture / écriture"),
         format!(
             "{} / {}",
             format_sample(snap.disk_read_latency),
@@ -131,16 +155,16 @@ pub fn view(s: &State, width: f32) -> El {
     let [rx, tx] = snap.monitor.network_rates.map(rate);
     let network = tile(
         "monitor-network",
-        "Réseau",
+        tr("Réseau"),
         "io",
         "network",
         format_sample(snap.network),
     )
     .help(provenance(&snap.network))
     .child(trend(s, true, 1, "network", None))
-    .child(reading("Réception", rx))
-    .child(reading("Émission", tx))
-    .child(label("Ethernet + Wi-Fi actifs", "small", "muted"));
+    .child(reading(tr("Réception"), rx))
+    .child(reading(tr("Émission"), tx))
+    .child(label(tr("Ethernet + Wi-Fi actifs"), "small", "muted"));
     let cols = if width < 430. {
         1
     } else if width < 850. {
@@ -163,7 +187,7 @@ pub fn view(s: &State, width: f32) -> El {
         .child(
             col()
                 .gap(4.)
-                .child(label("Moniteur", "title", "text").role("heading"))
+                .child(label(tr("Moniteur"), "title", "text").role("heading"))
                 .child(label(context, "body", "muted").wrap()),
         )
         .child(material_nav(s))
@@ -182,16 +206,19 @@ pub fn view(s: &State, width: f32) -> El {
                     .truncate(),
             );
             if let Some(next) = next.filter(|_| snap.adapters.len() > 1) {
-                info.child(action("monitor-next-gpu", "GPU suivant", false, move |s| {
-                    s.gpu_selection = Some(next.clone())
-                }))
+                info.child(action(
+                    "monitor-next-gpu",
+                    tr("GPU suivant"),
+                    false,
+                    move |s| s.gpu_selection = Some(next.clone()),
+                ))
             } else {
                 info
             }
         }))
         .child(
             label(
-                "Courbes : 60 dernières secondes · — : mesure indisponible",
+                tr("Courbes : 60 dernières secondes · — : mesure indisponible"),
                 "small",
                 "muted",
             )
@@ -202,11 +229,11 @@ pub fn view(s: &State, width: f32) -> El {
 pub(crate) fn cpu_temperature(s: &State) -> El {
     let (value,hint)=match s.snapshot.monitor.cpu_thermal {
         Availability::Available(t)=>(format!("{:.1} °C",t.celsius),format!("HWiNFO · {}",t.label)),
-        Availability::PermissionRequired=>("Accès refusé".into(),"HWiNFO : partage de capteurs inaccessible à ce compte.".into()),
-        _ if s.replay=>("—".into(),"La température CPU n’est pas enregistrée dans les sessions.".into()),
-        _=>("Non mesurée".into(),"Ouvrir les capteurs HWiNFO et activer Shared Memory Support. Le partage doit être actif et fournir une sonde CPU récente.".into()),
+        Availability::PermissionRequired=>(tr("Accès refusé").into(),tr("HWiNFO : partage de capteurs inaccessible à ce compte.").into()),
+        _ if s.replay=>("—".into(),tr("La température CPU n’est pas enregistrée dans les sessions.").into()),
+        _=>(tr("Non mesurée").into(),tr("Ouvrir les capteurs HWiNFO et activer Shared Memory Support. Le partage doit être actif et fournir une sonde CPU récente.").into()),
     };
-    reading("Température CPU", value)
+    reading(tr("Température CPU"), value)
         .key("cpu-temperature")
         .help(hint)
 }
@@ -259,7 +286,11 @@ fn gib(bytes: f64) -> f64 {
 fn display_duration(ms: u64) -> String {
     let sec = ms / 1000;
     if sec >= 86_400 {
-        format!("{} j {:02} h", sec / 86_400, sec / 3600 % 24)
+        trf!(
+            ("{} j {:02} h", "{} d {:02} h"),
+            sec / 86_400,
+            sec / 3600 % 24
+        )
     } else if sec >= 3600 {
         format!("{} h {:02} min", sec / 3600, sec / 60 % 60)
     } else if sec >= 60 {

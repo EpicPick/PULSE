@@ -1,5 +1,9 @@
 use super::{action, c, filled_segment, label, panel};
 use crate::State;
+use crate::{
+    i18n::{tr, trf},
+    translate_message,
+};
 use pulse_domain::{DriveSample, MIB};
 use rune::{El, LineCap, Shape, canvas, col, el, row};
 
@@ -7,17 +11,18 @@ const PER_PAGE: usize = 6;
 pub fn view(s: &State, compact: bool) -> El {
     let Some(data) = &s.storage else {
         return panel(
-            "Inventaire des disques",
-            "Lecture des disques physiques Windows…",
+            tr("Inventaire des disques"),
+            tr("Lecture des disques physiques Windows…"),
             "info",
         );
     };
     if data.drives.is_empty() {
         return panel(
-            "Aucun disque à afficher",
-            data.note
-                .as_deref()
-                .unwrap_or("Windows n’a renvoyé aucun disque physique."),
+            tr("Aucun disque à afficher"),
+            &data.note.as_deref().map_or_else(
+                || tr("Windows n’a renvoyé aucun disque physique.").into(),
+                translate_message,
+            ),
             "info",
         );
     }
@@ -35,14 +40,14 @@ pub fn view(s: &State, compact: bool) -> El {
         .border(1., c("border"))
         .child(columns(
             [
-                "Disque physique",
-                "Capacité",
-                "Activité",
-                "Lecture",
-                "Écriture",
-                "Latence L / É",
+                tr("Disque physique"),
+                tr("Capacité"),
+                tr("Activité"),
+                tr("Lecture"),
+                tr("Écriture"),
+                tr("Latence L / É"),
                 "Temp.",
-                "Santé",
+                tr("Santé"),
             ],
             compact,
             true,
@@ -55,11 +60,11 @@ pub fn view(s: &State, compact: bool) -> El {
             .map(|v| v.letter.as_str())
             .collect::<Vec<_>>()
             .join(" ");
-        let model = format!(
-            "{} · Disque {} · {}{}",
+        let model = trf!(
+            ("{} · Disque {} · {}{}", "{} · Drive {} · {}{}"),
             d.model,
             d.index,
-            d.bus,
+            tr(&d.bus),
             if letters.is_empty() {
                 String::new()
             } else {
@@ -103,7 +108,10 @@ pub fn view(s: &State, compact: bool) -> El {
     }
     let mut header = row().center_y().gap(8.).child(
         label(
-            format!("{} disques physiques", data.drives.len()),
+            trf!(
+                ("{} disques physiques", "{} physical drives"),
+                data.drives.len()
+            ),
             "section",
             "text",
         )
@@ -129,36 +137,40 @@ pub fn view(s: &State, compact: bool) -> El {
         .fill(c("surface"))
         .radius(7.)
         .border(1., c("border"))
-        .child(label("Débits de ce disque", "section", "text"))
+        .child(label(tr("Débits de ce disque"), "section", "text"))
         .child(
             row()
                 .gap(10.)
                 .center_y()
-                .child(label("● Lecture", "small", "cpu"))
-                .child(label("● Écriture", "small", "gpu"))
-                .child(label("60 dernières secondes", "small", "muted")),
+                .child(label(tr("● Lecture"), "small", "cpu"))
+                .child(label(tr("● Écriture"), "small", "gpu"))
+                .child(label(tr("60 dernières secondes"), "small", "muted")),
         )
         .child(trend(s, selected.index))
         .child(detail(
-            "Lecture / écriture",
+            tr("Lecture / écriture"),
             format!("{} / {}", rate(selected.read_bps), rate(selected.write_bps)),
         ))
         .child(detail(
-            "Temps actif",
+            tr("Temps actif"),
             selected
                 .busy_percent
                 .map_or_else(dash, |v| format!("{v:.0} %")),
         ))
-        .child(detail("Latence lecture / écriture", latency(selected)));
+        .child(detail(tr("Latence lecture / écriture"), latency(selected)));
     let mut volumes = col()
         .gap(8.)
         .padding(13.)
         .fill(c("surface"))
         .radius(7.)
         .border(1., c("border"))
-        .child(label("Volumes et espace", "section", "text"));
+        .child(label(tr("Volumes et espace"), "section", "text"));
     if selected.volumes.is_empty() {
-        volumes = volumes.child(label("Aucun volume avec lettre associé.", "small", "muted"));
+        volumes = volumes.child(label(
+            tr("Aucun volume avec lettre associé."),
+            "small",
+            "muted",
+        ));
     }
     for volume in &selected.volumes {
         let used = volume
@@ -173,7 +185,7 @@ pub fn view(s: &State, compact: bool) -> El {
                         volume.letter,
                         volume.name,
                         if volume.spans_multiple_disks {
-                            " · multidisque"
+                            tr(" · multidisque")
                         } else {
                             ""
                         }
@@ -184,7 +196,7 @@ pub fn view(s: &State, compact: bool) -> El {
                 .truncate(),
             )
             .child(detail(
-                "Utilisé / total",
+                tr("Utilisé / total"),
                 used.map_or_else(dash, |(used, total)| {
                     format!("{} / {}", capacity(used), capacity(total))
                 }),
@@ -202,44 +214,44 @@ pub fn view(s: &State, compact: bool) -> El {
     }
     let wear = selected
         .wear
-        .map_or_else(dash, |v| format!("{v} % consommée"));
+        .map_or_else(dash, |v| trf!(("{v} % consommée", "{v}% used")));
     let reliability = col()
         .gap(8.)
         .padding(13.)
         .fill(c("surface"))
         .radius(7.)
         .border(1., c("border"))
-        .child(label("Santé et température", "section", "text"))
+        .child(label(tr("Santé et température"), "section", "text"))
         .child(detail(
             if selected.nvme_smart {
-                "État Windows / NVMe"
+                tr("État Windows / NVMe")
             } else {
-                "État Windows"
+                tr("État Windows")
             },
             health(selected.health),
         ))
         .child(detail(
-            "Température",
+            tr("Température"),
             selected
                 .temperature
                 .map_or_else(dash, |v| format!("{v} °C")),
         ))
-        .child(detail("Endurance", wear))
+        .child(detail(tr("Endurance"), wear))
         .child(detail(
-            "Temps allumé",
+            tr("Temps allumé"),
             selected
                 .power_on_hours
                 .map_or_else(dash, |v| format!("{v} h")),
         ))
         .child(detail(
-            "Total écrit (hôte)",
+            tr("Total écrit (hôte)"),
             selected
                 .written_bytes
-                .map_or_else(dash, |n| format!("{:.2} To", n as f64 / 1e12)),
+                .map_or_else(dash, |n| trf!(("{:.2} To", "{:.2} TB"), n as f64 / 1e12)),
         ))
         .child(
             label(
-                "— : le périphérique, le pilote ou Windows ne publie pas la mesure.",
+                tr("— : le périphérique, le pilote ou Windows ne publie pas la mesure."),
                 "small",
                 "muted",
             )
@@ -257,7 +269,7 @@ pub fn view(s: &State, compact: bool) -> El {
         .child(listing)
         .child(if data.omitted {
             label(
-                "Inventaire limité aux 64 premiers disques.",
+                tr("Inventaire limité aux 64 premiers disques."),
                 "small",
                 "muted",
             )
@@ -266,7 +278,11 @@ pub fn view(s: &State, compact: bool) -> El {
         })
         .child(
             label(
-                format!("Disque {} · {}", selected.index, selected.model),
+                trf!(
+                    ("Disque {} · {}", "Drive {} · {}"),
+                    selected.index,
+                    selected.model
+                ),
                 "section",
                 "text",
             )
@@ -310,10 +326,10 @@ fn detail(label_text: &str, value: impl Into<String>) -> El {
 }
 fn health(value: Option<u16>) -> &'static str {
     match value {
-        Some(0) => "Pas d’alerte",
-        Some(1) => "Avertissement",
-        Some(2) => "Dégradé",
-        _ => "Non exposée",
+        Some(0) => tr("Pas d’alerte"),
+        Some(1) => tr("Avertissement"),
+        Some(2) => tr("Dégradé"),
+        _ => tr("Non exposée"),
     }
 }
 fn dash() -> String {
@@ -321,19 +337,19 @@ fn dash() -> String {
 }
 fn capacity(n: u64) -> String {
     if n >= 1024_u64.pow(4) {
-        format!("{:.2} Tio", n as f64 / 1024_f64.powi(4))
+        trf!(("{:.2} Tio", "{:.2} TiB"), n as f64 / 1024_f64.powi(4))
     } else {
-        format!("{:.1} Gio", n as f64 / 1024_f64.powi(3))
+        trf!(("{:.1} Gio", "{:.1} GiB"), n as f64 / 1024_f64.powi(3))
     }
 }
 fn rate(n: Option<f64>) -> String {
     n.map_or_else(dash, |v| {
         if v >= MIB as f64 {
-            format!("{:.1} Mio/s", v / MIB as f64)
+            trf!(("{:.1} Mio/s", "{:.1} MiB/s"), v / MIB as f64)
         } else if v >= 1024. {
-            format!("{:.1} Kio/s", v / 1024.)
+            trf!(("{:.1} Kio/s", "{:.1} KiB/s"), v / 1024.)
         } else {
-            format!("{v:.0} o/s")
+            trf!(("{v:.0} o/s", "{v:.0} B/s"))
         }
     })
 }
@@ -343,7 +359,7 @@ fn latency(d: &DriveSample) -> String {
 }
 fn trend(s: &State, id: u32) -> El {
     let Some((_, points)) = s.storage_history.get(&id) else {
-        return label("Courbes en attente de relevés", "small", "muted");
+        return label(tr("Courbes en attente de relevés"), "small", "muted");
     };
     let now = points.back().map_or(0, |p| p.elapsed_ms);
     let maximum = points
@@ -381,7 +397,7 @@ fn trend(s: &State, id: u32) -> El {
     col()
         .gap(4.)
         .child(label(
-            format!("Échelle : 0 → {}", rate(Some(maximum))),
+            trf!(("Échelle : 0 → {}", "Scale: 0 → {}"), rate(Some(maximum))),
             "small",
             "muted",
         ))
@@ -390,6 +406,6 @@ fn trend(s: &State, id: u32) -> El {
             row()
                 .justify_between()
                 .child(label("−60 s", "small", "muted"))
-                .child(label("Dernier relevé", "small", "muted")),
+                .child(label(tr("Dernier relevé"), "small", "muted")),
         )
 }
