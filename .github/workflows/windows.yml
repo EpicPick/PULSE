@@ -1,0 +1,33 @@
+name: Windows x64
+
+on: [push, pull_request, workflow_dispatch]
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-2025
+    env:
+      CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup show
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --locked --workspace --all-targets -- -D warnings
+      - run: cargo test --locked --workspace
+      - run: cargo build --locked -p pulse-app
+      - run: ./scripts/capture.ps1 -Out ./artifacts/captures
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pulse-rune-captures
+          path: artifacts/captures/*.png
+          if-no-files-found: error
+      - name: Assemble portable archive
+        shell: pwsh
+        run: ./scripts/package-windows.ps1 -NoSmoke
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pulse-windows-x64-preview
+          path: artifacts/PULSE-windows-x64.zip*
+          if-no-files-found: error

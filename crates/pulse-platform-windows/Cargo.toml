@@ -1,0 +1,15 @@
+[package]
+name = "pulse-platform-windows"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+pulse-domain = { path = "../pulse-domain" }
+pulse-actions = { path = "../pulse-actions" }
+
+[target.'cfg(windows)'.dependencies]
+nvml-wrapper = "0.12"
+wmi = { version = "0.18.4", default-features = false }
+serde = { version = "1", features = ["derive"] }
+windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_System_Threading", "Win32_System_Memory", "Win32_System_SystemInformation", "Win32_System_ProcessStatus", "Win32_System_Diagnostics_ToolHelp", "Win32_NetworkManagement_IpHelper", "Win32_NetworkManagement_Ndis", "Win32_Networking_WinSock", "Win32_System_Performance", "Win32_System_IO", "Win32_System_Ioctl", "Win32_UI_WindowsAndMessaging", "Win32_UI_Shell", "Win32_Graphics_Gdi", "Win32_Storage_FileSystem"] }

@@ -1,0 +1,13 @@
+/target/
+/artifacts/
+/PULSE.exe
+
+# Captures et sessions privées, jamais publiées avec les sources.
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+*.etl
+*.csv
+.env
+.env.*

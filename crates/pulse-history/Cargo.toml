@@ -1,0 +1,9 @@
+[package]
+name = "pulse-history"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+pulse-domain = { path = "../pulse-domain" }
+rusqlite = { version = "0.38", features = ["bundled"] }

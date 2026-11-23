@@ -1,0 +1,18 @@
+[package]
+name = "pulse-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+rune = { workspace = true, features = ["native-file-dialog"] }
+pulse-ui = { path = "../pulse-ui" }
+pulse-testkit = { path = "../pulse-testkit" }
+pulse-runtime = { path = "../pulse-runtime" }
+pulse-actions = { path = "../pulse-actions" }
+pulse-domain = { path = "../pulse-domain" }
+pulse-history = { path = "../pulse-history" }
+pulse-gaming = { path = "../pulse-gaming" }
+
+[target.'cfg(windows)'.dependencies]
+pulse-platform-windows = { path = "../pulse-platform-windows" }

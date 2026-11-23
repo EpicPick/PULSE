@@ -1,0 +1,17 @@
+[package]
+name = "pulse-ui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+rune.workspace = true
+rune-kit.workspace = true
+pulse-design = { path = "../pulse-design" }
+pulse-domain = { path = "../pulse-domain" }
+pulse-testkit = { path = "../pulse-testkit" }
+pulse-runtime = { path = "../pulse-runtime" }
+pulse-actions = { path = "../pulse-actions" }
+pulse-history = { path = "../pulse-history" }
+pulse-insights = { path = "../pulse-insights" }
+pulse-gaming = { path = "../pulse-gaming" }
